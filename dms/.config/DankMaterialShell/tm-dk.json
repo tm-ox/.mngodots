@@ -1,0 +1,11 @@
+{
+  "name": "tm-dk",
+  "primary": "#ff9e64",
+  "primaryText": "#ADADAD",
+  "surface": "#242835",
+  "surfaceText": "#C2C2C2",
+  "background": "#242835",
+  "backgroundText": "#2d323d",
+  "outline": "#cccccc",
+  "matugen_type": "scheme-tonal-spot"
+}
