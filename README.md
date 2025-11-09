@@ -1,3 +1,8 @@
+#### Ref
+
+- https://mangowc.vercel.app/
+- https://danklinux.com/
+
 ```bash
 sudo pacman -Syu git stow
 ```
