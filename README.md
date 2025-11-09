@@ -16,5 +16,5 @@ yay mangowc-git dms-shell-git
 ```
 
 ```bash
-git clone https://github.com/tm-ox/.mngodots.git && cd .mngodots && stow --adopt -vSt ~ * && git restore .
+git clone https://github.com/tm-ox/.mngodots.git && cd .mngodots && stow --adopt -vSt '~/.' '*' && git restore .
 ```
