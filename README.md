@@ -4,7 +4,7 @@
 - https://danklinux.com/
 
 ```bash
-sudo pacman -Syu git stow
+sudo pacman -Syu git stow adw-gtk-theme
 ```
 
 ```bash
@@ -12,7 +12,7 @@ git clone https://aur.archlinux.org/yay.git && cd yay && makepkg -si && cd .. &&
 ```
 
 ```bash
-yay mangowc-git dms-shell-git
+yay mangowc-git dms-shell-git matugen-bin
 ```
 
 ```bash
