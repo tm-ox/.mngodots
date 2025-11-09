@@ -1,6 +1,8 @@
 #!/bin/sh
 
 dms run &
+wl-paste --watch cliphist store &
+
 
 # # swaybg -i ~/Pictures/background.jpg &
 # waybar -c ~/.config/waybar/config -s ~/.config/waybar/style.css &
