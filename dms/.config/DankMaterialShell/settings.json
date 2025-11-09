@@ -41,17 +41,12 @@
   "controlCenterShowAudioIcon": true,
   "controlCenterWidgets": [
     {
-      "id": "brightnessSlider",
-      "enabled": true,
-      "width": 50
-    },
-    {
-      "id": "volumeSlider",
-      "enabled": true,
-      "width": 50
-    },
-    {
       "id": "wifi",
+      "enabled": true,
+      "width": 50
+    },
+    {
+      "id": "brightnessSlider",
       "enabled": true,
       "width": 50
     },
@@ -61,7 +56,17 @@
       "width": 50
     },
     {
+      "id": "volumeSlider",
+      "enabled": true,
+      "width": 50
+    },
+    {
       "id": "audioInput",
+      "enabled": true,
+      "width": 50
+    },
+    {
+      "id": "inputVolumeSlider",
       "enabled": true,
       "width": 50
     }
@@ -123,6 +128,10 @@
     },
     {
       "id": "controlCenterButton",
+      "enabled": true
+    },
+    {
+      "id": "colorPicker",
       "enabled": true
     },
     {
@@ -229,7 +238,7 @@
   "notificationTimeoutNormal": 5000,
   "notificationTimeoutCritical": 0,
   "notificationPopupPosition": 0,
-  "osdAlwaysShowValue": false,
+  "osdAlwaysShowValue": true,
   "powerActionConfirm": false,
   "customPowerActionLock": "",
   "customPowerActionLogout": "",

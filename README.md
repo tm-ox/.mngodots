@@ -4,7 +4,7 @@
 - https://danklinux.com/
 
 ```bash
-sudo pacman -Syu git stow adw-gtk-theme
+sudo pacman -Syu git stow adw-gtk-theme cliphist
 ```
 
 ```bash
