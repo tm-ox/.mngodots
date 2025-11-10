@@ -6,7 +6,7 @@
   "matugenTargetMonitor": "",
   "dankBarTransparency": 0,
   "dankBarWidgetTransparency": 1,
-  "popupTransparency": 0.8,
+  "popupTransparency": 1,
   "dockTransparency": 0,
   "widgetBackgroundColor": "sch",
   "cornerRadius": 2,
@@ -86,8 +86,8 @@
   "keyboardLayoutNameCompactMode": false,
   "runningAppsCurrentWorkspace": false,
   "runningAppsGroupByApp": false,
-  "clockDateFormat": "ddd d/M/yy",
-  "lockDateFormat": "",
+  "clockDateFormat": "ddd dd/M/yy",
+  "lockDateFormat": "yyyy-MM-dd",
   "mediaSize": 1,
   "dankBarLeftWidgets": [
     {
@@ -149,6 +149,10 @@
     {
       "id": "clock",
       "enabled": true
+    },
+    {
+      "id": "worldClock",
+      "enabled": true
     }
   ],
   "dankBarWidgetOrder": [],
@@ -185,7 +189,7 @@
   "soundNewNotification": true,
   "soundVolumeChanged": true,
   "soundPluggedIn": true,
-  "acMonitorTimeout": 0,
+  "acMonitorTimeout": 180,
   "acLockTimeout": 0,
   "acSuspendTimeout": 0,
   "acSuspendBehavior": 0,
@@ -199,7 +203,7 @@
   "brightnessDevicePins": {},
   "gtkThemingEnabled": false,
   "qtThemingEnabled": false,
-  "syncModeWithPortal": false,
+  "syncModeWithPortal": true,
   "showDock": false,
   "dockAutoHide": false,
   "dockGroupByApp": false,
@@ -242,7 +246,7 @@
   "powerActionConfirm": false,
   "customPowerActionLock": "",
   "customPowerActionLogout": "",
-  "customPowerActionSuspend": "/home/tm/.config/scripts/mango-suspend.sh",
+  "customPowerActionSuspend": "",
   "customPowerActionHibernate": "",
   "customPowerActionReboot": "",
   "customPowerActionPowerOff": "",
@@ -250,9 +254,7 @@
   "updaterCustomCommand": "",
   "updaterTerminalAdditionalParams": "",
   "screenPreferences": {
-    "dock": [
-      "HDMI-A-1"
-    ],
+    "dock": [],
     "dankBar": [
       "all"
     ],
@@ -261,7 +263,7 @@
     ]
   },
   "showOnLastDisplay": {
-    "dock": true,
+    "dock": false,
     "dankBar": true,
     "osd": true
   },

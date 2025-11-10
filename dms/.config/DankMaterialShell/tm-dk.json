@@ -1,11 +1,22 @@
 {
-  "name": "tm-dk",
+  "name": "Gruvbox Green Dark",
   "primary": "#ff9e64",
-  "primaryText": "#ADADAD",
+  "primaryText": "#242835",
+  "primaryContainer": "#242835",
+  "secondary": "#98971A",
   "surface": "#242835",
-  "surfaceText": "#C2C2C2",
+  "surfaceText": "#adadad",
+  "surfaceVariant": "#242835",
+  "surfaceVariantText": "#929292",
+  "surfaceTint": "#98971A",
   "background": "#242835",
-  "backgroundText": "#2d323d",
-  "outline": "#cccccc",
-  "matugen_type": "scheme-tonal-spot"
+  "backgroundText": "#FBF1C7",
+  "outline": "#929292",
+  "surfaceContainer": "#242835",
+  "surfaceContainerHigh": "#24283b",
+  "surfaceContainerHighest": "#2d323d",
+  "error": "#FB4934",
+  "warning": "#FABD2F",
+  "info": "#83A598",
+  "matugen_type": "scheme-expressive"
 }
