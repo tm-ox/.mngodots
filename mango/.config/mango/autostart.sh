@@ -1,15 +1,22 @@
 #!/bin/sh
 
+export XDG_CURRENT_DESKTOP="wlroots"
 export DMS_DISABLE_MATUGEN=1
 dms run &
 wl-paste --watch cliphist store &
 
+# dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP &
+dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP=wlroots &
+/usr/lib/polkit-kde-authentication-agent-1 &
+
+wmname LG3D &
+xdg-desktop-portal &
+xdg-desktop-portal-wlr &
+xdg-desktop-portal-gtk &
+
 # # swaybg -i ~/Pictures/background.jpg &
 # waybar -c ~/.config/waybar/config -s ~/.config/waybar/style.css &
 # swaync &
-
-dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP &
-/usr/lib/polkit-kde-authentication-agent-1 &
 
 sleep 3
 /usr/bin/mega-sync --daemon

@@ -149,10 +149,6 @@
     {
       "id": "clock",
       "enabled": true
-    },
-    {
-      "id": "worldClock",
-      "enabled": true
     }
   ],
   "dankBarWidgetOrder": [],
