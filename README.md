@@ -4,7 +4,7 @@
 - https://danklinux.com/
 
 ```bash
-sudo pacman -Syu git stow adw-gtk-theme cliphist xdg-desktop-portal-gtk swayidle swaylock
+sudo pacman -Syu git stow adw-gtk-theme cliphist xdg-desktop-portal xdg-desktop-portal-wlr xdg-desktop-portal-gtk swayidle swaylock
 ```
 
 ```bash
