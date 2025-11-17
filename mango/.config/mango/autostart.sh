@@ -21,9 +21,9 @@ xdg-desktop-portal-gtk &
 sleep 3
 /usr/bin/mega-sync --daemon
 
-swayidle -w \
-  timeout 600 'swaylock -f && systemctl suspend' \
-  before-sleep 'swaylock -f' &
+# swayidle -w \
+#   timeout 600 'swaylock -f && systemctl suspend' \
+#   before-sleep 'swaylock -f' &
 
 # # Focus Monitor eDP-1 (This usually happens by default)
 # mangowc focusmonitor eDP-1
