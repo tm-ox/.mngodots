@@ -154,6 +154,11 @@
     {
       "id": "clock",
       "enabled": true
+    },
+    {
+      "id": "spacer",
+      "enabled": true,
+      "size": 5
     }
   ],
   "dankBarWidgetOrder": [],
