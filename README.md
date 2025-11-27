@@ -4,7 +4,7 @@
 - https://danklinux.com/
 
 ```bash
-sudo pacman -Syu git stow adw-gtk-theme cliphist xdg-desktop-portal xdg-desktop-portal-wlr xdg-desktop-portal-gtk swayidle swaylock
+sudo pacman -S --needed - < pkglist.txt
 ```
 
 ```bash
@@ -13,6 +13,10 @@ git clone https://aur.archlinux.org/yay.git && cd yay && makepkg -si && cd .. &&
 
 ```bash
 yay mangowc-git dms-shell-git matugen-bin dsearch-bin
+```
+
+```bash
+yay -S --needed - < pkglist-aur.txt
 ```
 
 ```bash
