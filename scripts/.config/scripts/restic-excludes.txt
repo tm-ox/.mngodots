@@ -1,0 +1,6 @@
+.cache/
+.local/share/Trash/
+*.log
+docker.sock
+node_modules/
+tmp/
