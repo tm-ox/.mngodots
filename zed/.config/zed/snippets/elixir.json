@@ -1,0 +1,7 @@
+{
+  "Heex": {
+    "prefix": "~H",
+    "body": ["~H\"\"\"\n\n\"\"\""],
+    "description": "Heex Template"
+  }
+}

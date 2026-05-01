@@ -1,0 +1,7 @@
+{
+  "Empty Props": {
+    "prefix": "Eprops",
+    "body": ["let {$1}: Props = \\$props();"],
+    "description": "Empty Props Destructuring with $props"
+  }
+}
