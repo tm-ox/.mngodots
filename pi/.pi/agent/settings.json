@@ -2,6 +2,6 @@
   "lastChangelogVersion": "0.71.0",
   "defaultProvider": "xai",
   "defaultModel": "grok-4-1-fast",
-  "defaultThinkingLevel": "medium",
+  "defaultThinkingLevel": "off",
   "theme": "tm-dk"
 }
