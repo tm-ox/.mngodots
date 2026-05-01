@@ -20,7 +20,7 @@ export default function (pi: ExtensionAPI) {
     ctx.ui.setHeader((_tui, theme) => {
       return {
         render(_width: number): string[] {
-          const filled = theme.fg("accent", "█".repeat(W));
+          const filled = theme.fg("muted", "█".repeat(W));
           const empty = " ".repeat(W);
 
           const lines = LOGO.map(
