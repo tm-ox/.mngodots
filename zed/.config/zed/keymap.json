@@ -1,0 +1,130 @@
+// Zed keymap
+//
+// For information on binding keys, see the Zed
+// documentation: https://zed.dev/docs/key-bindings
+//
+// To see the default key bindings run `zed: Open Default Keymap`
+// from the command palette.
+[
+  {
+    "context": "Workspace",
+    "bindings": {
+      // "shift shift": "file_finder::Toggle"
+    },
+  },
+  {
+    "context": "Editor",
+    "bindings": {
+      // "j k": ["workspace::SendKeystrokes", "escape"]
+      // "capslock": ["workspace::SendKeystrokes", "escape"]
+    },
+  },
+  {
+    "context": "Dock || Terminal || Editor || ProjectPanel",
+    "bindings": {
+      "ctrl-shift-h": "workspace::ActivatePaneLeft",
+      "ctrl-shift-l": "workspace::ActivatePaneRight",
+      "ctrl-shift-k": "workspace::ActivatePaneUp",
+      "ctrl-shift-j": "workspace::ActivatePaneDown",
+    },
+  },
+  {
+    "context": "Editor && VimControl && !VimWaiting && !menu",
+    "bindings": {
+      "space b": "git::Blame",
+      "shift-k": "editor::Hover",
+      "space l f": "editor::Format",
+      "space d": "diagnostics::Deploy",
+      "space f f": "file_finder::Toggle",
+      "space o": "tab_switcher::Toggle",
+      "space e": "workspace::ToggleRightDock",
+      "space /": "workspace::NewSearch",
+      "ctrl-`": "workspace::ToggleBottomDock",
+      "g b": "editor::ToggleComments",
+      "+ +": "workspace::Save",
+      "space w": "workspace::Save",
+      "space q": "pane::CloseActiveItem",
+      "space x": "pane::CloseOtherItems",
+      "space k": "pane::SplitUp",
+      "space j": "pane::SplitDown",
+      "space h": "pane::SplitLeft",
+      "space l": "pane::SplitRight",
+      "alt-k": "editor::MoveLineUp",
+      "alt-j": "editor::MoveLineDown",
+      // "n": "search::SelectNextMatch",
+      // "shift-n": "search::SelectPreviousMatch",
+      "n": ["workspace::SendKeystrokes", "n z z"],
+      "shift-n": ["workspace::SendKeystrokes", "shift-n z z"],
+      "ctrl-u": ["workspace::SendKeystrokes", "ctrl-u z z"],
+      "ctrl-d": ["workspace::SendKeystrokes", "ctrl-d z z"],
+      "ctrl-f": ["workspace::SendKeystrokes", "ctrl-f z z"],
+      "ctrl-b": ["workspace::SendKeystrokes", "ctrl-b z z"],
+      "{": ["workspace::SendKeystrokes", "{ z z"],
+      "}": ["workspace::SendKeystrokes", "} z z"],
+      // "j": ["workspace::SendKeystrokes", "g j"],
+      // "k": ["workspace::SendKeystrokes", "g k"]
+    },
+  },
+  {
+    "context": "TabSwitcher",
+    "bindings": {
+      "ctrl-k": "menu::SelectPrevious",
+      "ctrl-j": "menu::SelectNext",
+    },
+  },
+  {
+    "context": "FileFinder",
+    "bindings": {
+      "ctrl-k": "menu::SelectPrevious",
+      "ctrl-j": "menu::SelectNext",
+    },
+  },
+  {
+    "context": "ProjectPanel",
+    "bindings": {
+      "ctrl-d": "project_panel::Duplicate",
+    },
+  },
+  {
+    "context": "CommandPalette",
+    "bindings": {
+      "ctrl-k": "menu::SelectPrevious",
+      "ctrl-j": "menu::SelectNext",
+    },
+  },
+  {
+    "context": "Editor && (showing_code_actions || showing_completions)",
+    "bindings": {
+      "ctrl-k": "editor::ContextMenuPrevious",
+      "ctrl-j": "editor::ContextMenuNext",
+    },
+  },
+  // {
+  //   "context": "Editor && mode == full && edit_prediction",
+  //   "bindings": {
+  //     "ctrl-j": "editor::NextInlineCompletion",
+  //     "ctrl-k": "editor::PreviousInlineCompletion"
+  //   }
+  // },
+  {
+    "context": "Picker || menu",
+    "bindings": {
+      "ctrl-k": "menu::SelectPrevious",
+      "ctrl-j": "menu::SelectNext",
+    },
+  },
+  {
+    "context": "BufferSearchBar && !in_replace > Editor",
+    "bindings": {
+      "ctrl-k": "search::PreviousHistoryQuery",
+      "ctrl-j": "search::NextHistoryQuery",
+    },
+  },
+  {
+    "context": "ProjectSearchBar > Editor",
+    "bindings": {
+      "ctrl-k": "search::PreviousHistoryQuery",
+      "ctrl-j": "search::NextHistoryQuery",
+    },
+  },
+]

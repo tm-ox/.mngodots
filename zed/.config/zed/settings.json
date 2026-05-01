@@ -1,0 +1,188 @@
+// Zed settings
+//
+// For information on how to configure Zed, see the Zed
+// documentation: https://zed.dev/docs/configuring-zed
+//
+// To see all of Zed's default settings without changing your
+// custom settings, run the `open default settings` command
+// from the command palette or from `Zed` application menu.
+{
+  "ssh_connections": [
+    {
+      "host": "192.168.1.26",
+      "username": "tm-serve",
+      "args": [],
+      "projects": [
+        {
+          "paths": ["/home/tm-serve"],
+        },
+      ],
+    },
+    {
+      "host": "100.65.133.78",
+      "username": "tm-serve",
+      "args": [],
+      "projects": [
+        {
+          "paths": ["/home/tm-serve"],
+        },
+      ],
+    },
+  ],
+  "agent_servers": {
+    "hermes-agent": {
+      "type": "custom",
+      "command": "/home/tm/.local/bin/zed-ssh-hermes",
+      "args": [],
+      "env": {},
+    },
+    "goose": {
+      "type": "custom",
+      "command": "/usr/bin/goose",
+      "args": ["acp"],
+      "env": {
+        "GOOSE_PROVIDER": "claude-acp",
+        "GOOSE_MODEL": "default",
+      },
+    },
+    "claude-acp": {
+      "type": "registry",
+    },
+    "your_agent": {
+      "type": "custom",
+      "command": "path_to_executable",
+      "args": [],
+      "env": {},
+    },
+  },
+  "context_servers": {},
+  "agent": {
+    "dock": "left",
+    "default_model": {
+      "provider": "zed.dev",
+      "model": "claude-3-5-sonnet-latest",
+    },
+  },
+  "vim_mode": true,
+  "base_keymap": "VSCode",
+  "telemetry": {
+    "diagnostics": false,
+    "metrics": false,
+  },
+  "ui_font_size": 16,
+  "buffer_font_size": 12.5,
+  "theme": {
+    "mode": "system",
+    "light": "Ayu Mirage",
+    "dark": "Hex Ayu Mirage",
+  },
+  "soft_wrap": "editor_width",
+  "experimental.theme_overrides": {
+    // https://github.com/ssaunderss/zed-tokyo-night/blob/main/themes/tokyo-night.json
+    "background": "#242835ff",
+    "title_bar.background": "#242835ff",
+    "status_bar.background": "#242835ff",
+    "panel.background": "#242835ff",
+    "editor.line_number": "#646A83",
+    "editor.invisible": "#777777",
+    "players": [
+      {
+        "cursor": "#F59962",
+        // "background": "#7c7f93",
+        // "selection": "#7c7f93"
+      },
+    ],
+    "tab.active_background": "#222732",
+    // "tab.inactive_background": "#242835dd"
+    // "tab_bar.background": "#282E42"
+    "editor.document_highlight.read_background": "#000000",
+    "editor.document_highlight.bracket_background": "#E03616",
+  },
+  "relative_line_numbers": "enabled",
+  "vertical_scroll_margin": 8,
+  "scrollbar": {
+    "show": "never",
+  },
+  "tab_bar": {
+    "show": false,
+  },
+  "toolbar": {
+    "breadcrumbs": true,
+    "quick_actions": false,
+  },
+  // "terminal": {
+  //   "dock": "right"
+  // },
+  "project_panel": {
+    "dock": "right",
+  },
+  "outline_panel": {
+    "dock": "right",
+  },
+  "file_finder": {
+    // Whether to show file icons in the file finder.
+    "file_icons": true,
+    // Determines how much space the file finder can take up in relation to the available window width.
+    // There are 5 possible width values:
+    //
+    // 1. Small: This value is essentially a fixed width.
+    //    "modal_width": "small"
+    // 2. Medium:
+    //    "modal_width": "medium"
+    // 3. Large:
+    //    "modal_width": "large"
+    // 4. Extra Large:
+    //    "modal_width": "xlarge"
+    // 5. Fullscreen: This value removes any horizontal padding, as it consumes the whole viewport width.
+    //    "modal_width": "full"
+    //
+    // Default: small
+    "modal_max_width": "large",
+  },
+  "format_on_save": "on",
+  "languages": {
+    "CSS": {
+      "language_servers": ["tailwindcss-language-server", "..."],
+    },
+    "Elixir": {
+      "formatter": {
+        "external": {
+          "command": "mix",
+          "arguments": ["format", "--stdin-filename", "{buffer_path}", "-"],
+        },
+      },
+      "language_servers": ["elixir-ls", "tailwindcss-language-server"],
+      "format_on_save": "on",
+    },
+    "HEEX": {
+      "formatter": {
+        "external": {
+          "command": "mix",
+          "arguments": ["format", "--stdin-filename", "{buffer_path}", "-"],
+        },
+      },
+      "format_on_save": "on",
+      "language_servers": [
+        "elixir-ls",
+        "tailwindcss-language-server",
+        "emmet-language-server",
+      ],
+    },
+  },
+  "lsp": {
+    "elixir-ls": {
+      "settings": {
+        "dialyzerEnabled": false,
+      },
+    },
+    "tailwindcss-language-server": {
+      "settings": {
+        "includeLanguages": {
+          "templ": "html",
+          "heex": "html",
+          "Elixir": "html",
+        },
+      },
+    },
+  },
+}

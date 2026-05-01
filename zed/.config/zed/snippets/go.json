@@ -1,0 +1,18 @@
+{
+  "Scaffold Go Main": {
+    "prefix": "goscaf",
+    "body": [
+      "package main",
+      "",
+      "import (",
+      "\t\"fmt\"",
+      ")",
+      "",
+      "func main() {",
+      "\tfmt.Println(\"Hello, World!\")",
+      "\t$0",
+      "}"
+    ],
+    "description": "Minimal Go main file structure"
+  }
+}

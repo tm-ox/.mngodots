@@ -1,0 +1,9 @@
+: 1777620087:0;ps aux | grep mega
+: 1777620101:0; journalctl --user -u xdg-desktop-portal-wlr -u xdg-desktop-portal --since boot
+: 1777620125:0;claude
+: 1777620182:0;ps aux | grep mega
+: 1777620205:0;journalctl --user -u xdg-desktop-portal-wlr -u xdg-desktop-portal -b
+: 1777620567:0;ps aux | grep mega-sync
+: 1777620578:0;journalctl --user -u xdg-desktop-portal-wlr -u xdg-desktop-portal -b --since "$(date +%Y-%m-%d)"
+: 1777620593:0;claude
+: 1777620861:0;g.
