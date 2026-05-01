@@ -21,9 +21,9 @@
     "purple":    "#bb9af7"
   },
   "colors": {
-    "accent":             "teal",
-    "border":             "blue",
-    "borderAccent":       "cyan",
+    "accent":             "orange",
+    "border":             "orange",
+    "borderAccent":       "orange",
     "borderMuted":        "gray",
     "success":            "green",
     "error":              "red",
@@ -73,11 +73,11 @@
     "thinkingOff":        "gray",
     "thinkingMinimal":    "fgDim",
     "thinkingLow":        "blue",
-    "thinkingMedium":     "teal",
+    "thinkingMedium":     "orange",
     "thinkingHigh":       "purple",
     "thinkingXhigh":      "cyan",
 
-    "bashMode":           "green"
+    "bashMode":           "orange"
   },
   "export": {
     "pageBg":  "#1D202F",
