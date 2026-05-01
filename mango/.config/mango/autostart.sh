@@ -5,21 +5,22 @@ export DMS_DISABLE_MATUGEN=1
 dms run &
 wl-paste --watch cliphist store &
 
-# dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP &
-dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP=wlroots &
+# Propagate Wayland env to D-Bus and systemd user session before portal init
+dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP=wlroots
 /usr/lib/polkit-kde-authentication-agent-1 &
 
 wmname LG3D &
-xdg-desktop-portal &
-xdg-desktop-portal-wlr &
-xdg-desktop-portal-gtk &
+
+# Start wlr backend via systemd (blocks until active and registered on D-Bus)
+systemctl --user start xdg-desktop-portal-wlr.service
+# Restart main portal in background to pick up wlr backend and correct env
+systemctl --user restart xdg-desktop-portal.service &
 
 # # swaybg -i ~/Pictures/background.jpg &
 # waybar -c ~/.config/waybar/config -s ~/.config/waybar/style.css &
 # swaync &
 
-sleep 3
-/usr/bin/mega-sync --daemon
+(/usr/lib/systemd/systemd-networkd-wait-online --any -q --timeout=30 && /usr/bin/mega-sync --daemon) &
 
 # swayidle -w \
 #   timeout 600 'swaylock -f && systemctl suspend' \

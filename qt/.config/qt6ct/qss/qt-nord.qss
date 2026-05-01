@@ -1,0 +1,17 @@
+QMenuBar,
+QMenu,
+QToolBar,
+QStatusBar,
+QFrame,
+QScrollBar {
+    border: none;
+}
+
+QFrame {
+    background: transparent;
+}
+
+QTabBar {
+    background: #24283b;
+    border: 0;
+}

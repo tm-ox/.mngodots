@@ -1,0 +1,65 @@
+[opener]
+# edit = [{ run = 'kitty --detach vim "$@" > /dev/null 2>&1', orphan = true, desc = "vim" }]
+edit = [{ run = 'kitty vim "$@"', orphan = true, desc = "vim" }]
+rename = [{ run = 'kitty vim "$@"', block = true, desc = "rename" }]
+# edit = [{ run = 'kitty vim "$@"', block = true, desc = "vim" }]
+zed = [{ run = 'zeditor "$@"', block = true }]
+vector = [{ run = 'inkscape "$@"', orphan = true }]
+raster = [{ run = 'krita "$@"', orphan = true }]
+snip = [{ run = 'satty -f "$@"', orphan = true }]
+browser = [{ run = 'vivaldi "$@"', orphan = true }]
+viewer = [{ run = 'evince "$@"', orphan = true }]
+play = [{ run = 'mpv "$@"', orphan = true, for = "unix" }]
+open = [{ run = 'xdg-open "$@"', desc = "Open" }]
+zed_dir = [{ run = 'zeditor "$@"', orphan = true, desc = "Open directory with Zed" }]
+bitwig = [{ run = 'bitwig-studio "$@"', orphan = true }]
+aff = [{ run = 'Affinity "$@"', orphan = true }]
+
+[open]
+editor = "edit"
+prepend_rules = [
+    { mime = "text/plain", use = [
+        "edit",
+    ] },
+    { mime = "inode/directory", use = [
+        "zed_dir",
+    ] },
+    { name = "*.svg", use = [
+        "edit",
+        "vector",
+    ] },
+    { name = "*.png", use = [
+        "raster",
+        "snip",
+    ] },
+    { name = "*.jpg", use = [
+        "raster",
+        "snip",
+    ] },
+    { name = "*.jpeg", use = [
+        "raster",
+        "snip",
+    ] },
+    { name = "*.pdf", use = [
+        "viewer",
+        "browser",
+        "vector",
+    ] },
+    { name = "*.html", use = [
+        "browser",
+    ] },
+    { name = "*.bwproject", use = [
+        "bitwig",
+    ] },
+    { name = "*.af", use = [
+        "aff",
+    ] },
+    { name = "*", use = [
+        "rename",
+        "zed",
+    ] },
+]
+append_rules = []
+
+[mgr]
+linemode = "size_and_mtime"
