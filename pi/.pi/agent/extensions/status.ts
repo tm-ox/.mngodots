@@ -19,9 +19,8 @@ export default function (pi: ExtensionAPI) {
   function push(ctx: any) {
     const age = elapsed(Date.now() - startMs);
     const t = turns;
-    ctx.ui.setStatus('session-info',
-      `${hhmm(new Date(startMs))}  ·  ${age}  ·  ${t} turn${t !== 1 ? 's' : ''}`
-    );
+    const text = `${hhmm(new Date(startMs))}  ·  ${age}  ·  ${t} turn${t !== 1 ? 's' : ''}`;
+    ctx.ui.setStatus('session-info', `\x1b[2m${text}\x1b[0m`);
   }
 
   pi.on('session_start', (_e, ctx) => {
@@ -35,7 +34,6 @@ export default function (pi: ExtensionAPI) {
     if (ctx.hasUI) push(ctx);
   });
 
-  // refresh elapsed after each response
   pi.on('message_end', (_e, ctx) => {
     if (ctx.hasUI) push(ctx);
   });
