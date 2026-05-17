@@ -1,13 +1,184 @@
-: 1777621018:0;g.
-: 1777621032:0;gc "20260501"
-: 1777621036:0;gp
-: 1777621385:0;cd .pi
-: 1777621387:0;.z
-: 1777621445:0;pi
-: 1777623445:0;claude
-: 1777623643:0;pi
-: 1777624041:0;g.
-: 1777624043:0;gc "20260501"
-: 1777624045:0;gp
-: 1777624109:0;pi
-: 1777625594:0;g.
+cd .pi
+gc "20260501"
+mkdir GoCards
+cd GoCards
+make help
+make --help
+rm -rf GoCards
+mkdir pso
+cd pso
+go mod init pizza-tracker
+mkdir -p internal/models templates/static data cmd
+ude
+cd ls
+.w
+cd ynk
+npm run dev
+gc "ynk-50"
+cd ../Documents/40_projects
+cd 43_picomaju
+which wine
+wine --version
+cd go
+mkdir pogos
+cd pogos
+go init
+go mod init
+go mod init pogos
+go mod init github.com/tm-ox/pggs
+go mod tidy
+cd ..
+cd pggs
+cd ../pggs
+go build main.go
+./main
+rm -rf main
+killall Affinity
+killall affinity
+killall Affinity Suite
+killall AffinitySuite
+gc "sidebar color"
+gc "compiler"
+gc "subs"
+gc "review"
+gc "ui review + staff sidebar consolidation"
+cd go/pggs
+gc "ui optimisation"
+gc :users"
+gc "usres"
+gc "user menu"
+gc :home / dash"
+gc "home / dash"
+gc "workshop"
+gc "readme"
+pacSs frappe
+yaySs frappe
+yay frappe-books-bin
+yay -Rns frappe-books-bin
+pacSs Akaunting
+yaySs Akaunting
+cd invoice
+clause
+(python render.py invoices/INV-0059-BL001-20260511.yaml 2>&1 && xdg-open\
+      output/INV-0059-BL001-20260511.pdf &)\
+  âƒ®¿ Âƒ€/home/tm/Documents/wrk/invoice/output/INV-0059-BL001-20260511.pdf
+git init
+git remote add origin git@github.com:tm-ox/invoice.git\
+git branch -M main\
+git push -u origin main
+gc "init"
+git push --set-upstream origin main
+git clone git@github.com:Beyond-One-AU/cleary-hoare-esg.git
+gc "add max-width & height to icons"
+go run .
+figma-linux
+killall inkscape
+.k
+cd NTR
+cd NTR001-Cards
+cd supplied
+gs -o - -sDEVICE=inkcov NTR Cards.pdf
+gs -o - -sDEVICE=inkcov NTR-Cards.pdf
+gs -q -o - -sDEVICE=txtwrite -dFILTERRGB NTR-Cards.pdf
+cd ../
+gs -o NTR-Cards-Fixed.pdf \\
+   -sDEVICE=pdfwrite \\
+   -sColorConversionStrategy=CMYK \\
+   -dProcessColorModel=/DeviceCMYK \\
+   -dOverrideICC \\
+   -dEmbedAllFonts=true \\
+   -dPDFSETTINGS=/prepress \\
+NTR001-Cards.pdf
+ls
+pdf-parser -s /DeviceRGB NTR001-Cards.pdf
+pacS pdf-parser
+yaySs pdf-parser
+pdfinfo -meta NTR-Cards.pdf
+pdfinfo -meta NTR001-Cards.pdf
+gs -q -o - -sDEVICE=txtwrite -dFILTERRGB NTR001-Cards.pdf
+strings NTR001-Cards.pdf | grep -E "/DeviceRGB|/DefaultRGB|/ColorSpace << /DeviceRGB"
+gs -o - -sDEVICE=inkcov NTR001-Cards.pdf
+/z
+killall affinity.exe
+killall Affinity.exe
+.r
+cd cleary-hoare-esg
+php -S localhost:8000
+gc "apply logoDisplayWidth to logo td and resize a copy logo-ch.png to 500px"
+cd Documents/40_projects/43_picomaju
+.z
+gc "tests"
+DEV=1 go run .
+task dev
+g.
+gc "home screen data"
+gp
+claude
+pi
+pacSs agent-of
+yaySs agent-of
+yay agent-of
+pi update
+aoe serve --remote
+aoe serve --remote --no-tailscal
+aoe serve --remote --no-tailscale
+sudo tailscale set --operator=$USER
+aoe serve --stop
+aoe serve --remote --passphrase p45t4
+aoe cockpit stop
+aoe cockpit agents
+aoe
+: 1778931131:0;sudo systemctl status sshd
+: 1778931164:0;sudo systemctl start sshd
+: 1778931168:0;sudo systemctl status sshd
+: 1778931220:0;ls
+: 1778931231:0;cd repos
+: 1778931244:0;aoe
+: 1778984281:0;sudo pacman -Syu
+: 1778984493:0;neofetch
+: 1778984899:0;docker ps
+: 1778985003:0;pacSs opencode
+: 1778985028:0;pacSs opera
+: 1778985045:0;yaySs opera
+: 1778985193:0;paccache -dvk2
+: 1778985196:0;paccache -dvk1
+: 1778985210:0;paccache-clear.sh
+: 1778985233:0;pacman -Qdt
+: 1778989166:0;sudo pacman -Syu
+: 1778989490:0;pacman -Qe | grep -E "ghc|haskell|cabal"
+: 1778989507:0;du -sh ~/.ghcup ~/.cabal ~/.stack 2>/dev/null
+: 1778990214:0;paccache -dvk2
+: 1778990236:0;ls
+: 1778990267:0;vim
+: 1778990311:0;yay
+: 1778990373:0;yay -Rns codename-goose-bin goose-desktop-bin
+: 1778990381:0;paccache -dvk2
+: 1778990392:0;yay
+: 1778991807:0;paccache -dvk2
+: 1778991814:0;paccache-clear.sh
+: 1778991832:0;sudo reflector --country Indonesia --protocol https --latest 5 --sort rate --save /etc/pacman.d/mirrorlist
+: 1778991842:0;pacS reflector
+: 1778991856:0;sudo reflector --country Indonesia --protocol https --latest 5 --sort rate --save /etc/pacman.d/mirrorlist
+: 1778991905:0;sudo reflector --country ID,SG --protocol https --latest 10 --sort rate --save /etc/pacman.d/mirrorlist
+: 1778991947:0;sudo pacman -Rns haskell-tidal
+: 1778991991:0;cat /etc/pacman.d/mirrorlist
+: 1778992008:0;sudo pacman -Syy
+: 1778992027:0;sudo pacman -Syu
+: 1778992035:0;yay
+: 1778992107:0;yaySs mango
+: 1778992119:0;pacSs mango
+: 1778992208:0;yay -S mangowm
+: 1778992299:0;yay
+: 1778992342:0;pacman -Qi libkdcraw5 quazip-qt5 | grep -E "Name|Required By"
+: 1778992354:0;sudo pacman -Rns libkdcraw5 quazip-qt5
+: 1778992433:0;yay
+: 1778992452:0;pacSs joplin
+: 1778992458:0;yaySs joplin
+: 1778993095:0;mmsg -d reload_config
+: 1778993252:0;# Check if the compositor defaults to a new naming convention\
+ls -d ~/.config/mango*
+: 1778993264:0;ls -d ~/.config/mango*
+: 1778993295:0;mangowm --validate
+: 1778993306:0;mango --validate
+: 1778993336:0;mango -p
+: 1778995967:0;g.

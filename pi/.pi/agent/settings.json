@@ -1,7 +1,7 @@
 {
-  "lastChangelogVersion": "0.71.0",
+  "lastChangelogVersion": "0.73.1",
   "defaultProvider": "xai",
   "defaultModel": "grok-4-1-fast",
-  "defaultThinkingLevel": "minimal",
+  "defaultThinkingLevel": "off",
   "theme": "tm-dk"
 }
