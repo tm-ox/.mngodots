@@ -7,11 +7,12 @@
 // custom settings, run the `open default settings` command
 // from the command palette or from `Zed` application menu.
 {
+  "cli_default_open_behavior": "new_window",
   "collaboration_panel": {
-    "dock": "left"
+    "dock": "left",
   },
   "git_panel": {
-    "dock": "left"
+    "dock": "left",
   },
   "ssh_connections": [
     {
@@ -167,7 +168,7 @@
       "language_servers": ["elixir-ls", "tailwindcss-language-server"],
       "format_on_save": "on",
     },
-    "HEEX": {
+    "HEEx": {
       "formatter": {
         "external": {
           "command": "mix",

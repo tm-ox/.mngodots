@@ -182,3 +182,92 @@ ls -d ~/.config/mango*
 : 1778993306:0;mango --validate
 : 1778993336:0;mango -p
 : 1778995967:0;g.
+: 1778995991:0;gc "20260517"
+: 1778995993:0;gp
+: 1778996093:0;mango -p
+: 1778996100:0;mango
+: 1778996114:0;mango -h
+: 1778996129:0;mango -v
+: 1778996209:0;ncdu / --exclude /media
+: 1778996346:0;paccache -dvk2
+: 1778996348:0;paccache -dvk1
+: 1778996359:0;paccache -rvk1
+: 1778996462:0;pacSs playwright
+: 1778996471:0;yaySs playwright
+: 1779001731:0;.r
+: 1779001747:0;cd go
+: 1779001748:0;ls
+: 1779001753:0;cd pggs
+: 1779001755:0;.z
+: 1779001771:0;go run .
+: 1779002326:0;cd .mngodots
+: 1779002328:0;.z
+: 1779002382:0;zeditor --classic
+: 1779002484:0;cd .mngodots
+: 1779002487:0;.z
+: 1779002513:0;.r
+: 1779002517:0;cd go/pggs
+: 1779002519:0;.z
+: 1779002601:0;go run .
+: 1779003335:0;go run .\ 
+: 1779003336:0;go run .
+: 1779017676:0;cd Documents/40_projects/43_picomaju
+: 1779017677:0;.z
+: 1779017685:0;aoe
+: 1779017888:0;.r
+: 1779017898:0;cd go
+: 1779017912:0;mkdir go-boilerplate
+: 1779017915:0;cd go-boilerplate
+: 1779017917:0;.z
+: 1779018012:0;mkdir apps packages
+: 1779018072:0;npm init -y
+: 1779018126:0;which bun
+: 1779018155:0;nvm 22
+: 1779018161:0;nvm use 22
+: 1779018218:0;curl -fsSL https://bun.com/install | bash
+: 1779018240:0;bun --version
+: 1779018474:0;bun add -D turbo typescript
+: 1779019345:0;cd apps/backend
+: 1779019382:0;go mod init github.com/tm-ox/go-boilerplate
+: 1779019945:0;ls
+: 1779019953:0;cat go.json
+: 1779020005:0;task run
+: 1779020165:0;cd apps/backend/internal
+: 1779020173:0;cd apps/backend
+: 1779020176:0;ls
+: 1779020187:0;cd internal
+: 1779020385:0;mkdir database errs handler lib logger middleware model repository router server service sqlerr testing validation
+: 1779024190:0;cd ../
+: 1779024197:0;task run
+: 1779024363:0;go get -u github.com/knadh/koanf/v2
+: 1779024381:0;task run
+: 1779024508:0;go get -u github.com/rs/zerolog/log
+: 1779024775:0;go get github.com/joho/godotenv
+: 1779024878:0;g.
+: 1779024889:0;gc "personalised chat"
+: 1779024896:0;gp
+: 1779025632:0;task run
+: 1779025718:0;go get -u github.com/knadh/koanf/providers/file
+: 1779025729:0;task run
+: 1779025819:0;go get -u github.com/knadh/koanf/providers/env
+: 1779026114:0;go get github.com/go-playground/validator/v10
+: 1779026153:0;task run
+: 1779026198:0;go get github.com/go-playground/validator/v10
+: 1779026713:0;g.
+: 1779026723:0;gc "additional test coverage"
+: 1779026725:0;gp
+: 1779027107:0;g.
+: 1779027116:0;gc "agent compliation"
+: 1779027118:0;gp
+: 1779028555:0;task dev
+: 1779028686:0;g.
+: 1779028693:0;gc "agent activity"
+: 1779028696:0;gp
+: 1779030354:0;g.
+: 1779030369:0;gc "picoclaw realignment"
+: 1779030371:0;gp
+: 1779031347:0;g.
+: 1779031350:0;gc "picoclaw realignment"
+: 1779031352:0;gp
+: 1779072097:0;claude
+: 1779073339:0;g.
