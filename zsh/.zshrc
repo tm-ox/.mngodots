@@ -121,3 +121,10 @@ pandoc-typst() {
     return 1
   fi
 }
+
+# bun completions
+[ -s "/home/tm/.bun/_bun" ] && source "/home/tm/.bun/_bun"
+
+# bun
+export BUN_INSTALL="$HOME/.bun"
+export PATH="$BUN_INSTALL/bin:$PATH"

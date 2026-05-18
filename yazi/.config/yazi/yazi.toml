@@ -24,37 +24,37 @@ prepend_rules = [
     { mime = "inode/directory", use = [
         "zed_dir",
     ] },
-    { name = "*.svg", use = [
+    { url = "*.svg", use = [
         "edit",
         "vector",
     ] },
-    { name = "*.png", use = [
+    { url = "*.png", use = [
         "raster",
         "snip",
     ] },
-    { name = "*.jpg", use = [
+    { url = "*.jpg", use = [
         "raster",
         "snip",
     ] },
-    { name = "*.jpeg", use = [
+    { url = "*.jpeg", use = [
         "raster",
         "snip",
     ] },
-    { name = "*.pdf", use = [
+    { url = "*.pdf", use = [
         "viewer",
         "browser",
         "vector",
     ] },
-    { name = "*.html", use = [
+    { url = "*.html", use = [
         "browser",
     ] },
-    { name = "*.bwproject", use = [
+    { url = "*.bwproject", use = [
         "bitwig",
     ] },
-    { name = "*.af", use = [
+    { url = "*.af", use = [
         "aff",
     ] },
-    { name = "*", use = [
+    { url = "*", use = [
         "rename",
         "zed",
     ] },
