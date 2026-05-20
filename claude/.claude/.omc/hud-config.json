@@ -1,0 +1,35 @@
+{
+  "preset": "focused",
+  "elements": {
+    "omcLabel": false,
+    "useBars": false
+  },
+  "layout": {
+    "line1": ["gitBranch", "gitStatus"],
+    "main": [
+      "contextBar",
+      "rateLimits",
+      "customBuckets",
+      "permission",
+      "thinking",
+      "session",
+      "callCounts",
+      "lastTool",
+      "agents",
+      "background"
+    ],
+    "detail": [
+      "promptTime",
+      "tokens",
+      "ralph",
+      "autopilot",
+      "prd",
+      "skills",
+      "lastSkill",
+      "sessionSummary",
+      "missionBoard",
+      "contextWarning",
+      "todos"
+    ]
+  }
+}

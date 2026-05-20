@@ -151,6 +151,16 @@
     "Go Template": ["tmpl"],
   },
   "languages": {
+    "Go": {
+      "formatter": {
+        "language_server": {
+          "name": "gopls",
+        },
+      },
+      "code_actions_on_format": {
+        "source.organizeImports": true,
+      },
+    },
     "Go Template": {
       "format_on_save": "off",
       "language_servers": [],
