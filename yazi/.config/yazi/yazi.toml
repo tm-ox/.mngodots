@@ -14,6 +14,7 @@ open = [{ run = 'xdg-open "$@"', desc = "Open" }]
 zed_dir = [{ run = 'zeditor "$@"', orphan = true, desc = "Open directory with Zed" }]
 bitwig = [{ run = 'bitwig-studio "$@"', orphan = true }]
 aff = [{ run = 'Affinity "$@"', orphan = true }]
+extract = [{ run = '7z x "$1" -o"$(dirname "$1")"', block = true, desc = "Extract archive" }]
 
 [open]
 editor = "edit"
@@ -54,6 +55,13 @@ prepend_rules = [
     { url = "*.af", use = [
         "aff",
     ] },
+    { mime = "application/zip", use = ["extract"] },
+    { mime = "application/x-tar", use = ["extract"] },
+    { mime = "application/x-bzip2", use = ["extract"] },
+    { mime = "application/x-gzip", use = ["extract"] },
+    { mime = "application/x-xz", use = ["extract"] },
+    { mime = "application/x-7z-compressed", use = ["extract"] },
+    { mime = "application/x-rar", use = ["extract"] },
     { url = "*", use = [
         "rename",
         "zed",

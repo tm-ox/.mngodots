@@ -271,3 +271,74 @@ ls -d ~/.config/mango*
 : 1779031352:0;gp
 : 1779072097:0;claude
 : 1779073339:0;g.
+: 1779073362:0;gc "new yazi syntax"
+: 1779073364:0;gp
+: 1779073736:0;claude
+: 1779088968:0;killall Addinity.exe
+: 1779088973:0;killall Affinity.exe
+: 1779158943:0;cd Documents/wrk/invoice
+: 1779158945:0;.z
+: 1779159022:0;claude
+: 1779160296:0;mega-ls
+: 1779160319:0;mega-cd wrk-done
+: 1779160321:0;mega-ls
+: 1779160335:0;mega-cd NTR
+: 1779160341:0;mega-ls
+: 1779168270:0;neofetch
+: 1779168839:0;claude
+: 1779169847:0;.r
+: 1779169851:0;git clone git@github.com:Bangonline/carbon-quote-app.git
+: 1779169869:0;ls
+: 1779169876:0;cd carbon-quote-app
+: 1779169878:0;.z
+: 1779169889:0;npm install
+: 1779169946:0;npm audit fix
+: 1779169993:0;npm run dev
+: 1779170072:0;clauder
+: 1779170075:0;claude
+: 1779170178:0;npm run dev
+: 1779170565:0;.r
+: 1779170574:0;git clone git@github.com:Beyond-One-AU/carbon-leasing-calculator.git
+: 1779170588:0;ls
+: 1779170596:0;cd carbon-leasing-calculator
+: 1779171223:0;g.
+: 1779171240:0;gc "20260519"
+: 1779171242:0;gp
+: 1779189137:0;.r
+: 1779189146:0;cd go/go-boilerplate
+: 1779189148:0;.z
+: 1779189454:0;$ go get github.com/jackc/pgx/v5\
+
+: 1779189464:0;go get github.com/jackc/pgx/v5
+: 1779189540:0;go get github.com/jackc/pgx/v5/pgxpool
+: 1779189929:0;go get github.com/newrelic/go-agent
+: 1779189950:0;go mod tidy
+: 1779194454:0;go get github.com/newrelic/go-agent
+: 1779194542:0;go mod tidy
+: 1779194840:0;claude
+: 1779194979:6;go get github.com/newrelic/go-agent/v3/integrations/logcontext-v2/zerologWriter
+: 1779196313:0;go mod tidy
+: 1779243515:0;cd Documents/wrk/NTR/NTR-Reels
+: 1779243517:0;.z
+: 1779243585:0;claude
+: 1779247441:0;yaySs nullclaw
+: 1779247717:0;which zig
+: 1779247725:0;zig --version
+: 1779271099:0;go mod tidy
+: 1779271320:0;clause
+: 1779271323:0;claude
+: 1779272113:0;go mod tidy
+: 1779272200:0;go get github.com/jackc/tern/v2
+: 1779272441:0;task migrations:new name=setup
+: 1779272500:0;go install github.com/jackc/tern/v2@latest
+: 1779272508:0;task migrations:new name=setup
+: 1779274231:0;go mod tidy
+: 1779274305:0;go get -u github.com/hibiken/asynq
+: 1779282772:0;ss -tlpn | grep -i "affinity"
+: 1779282776:0;ss -tlpn | grep -i "Affinity"
+: 1779282798:0;aoe
+: 1779282805:0;claude
+: 1779288055:0;aoe
+: 1779288612:0;yay agent-of-
+: 1779288756:0;aoe
+: 1779290547:0;g.
