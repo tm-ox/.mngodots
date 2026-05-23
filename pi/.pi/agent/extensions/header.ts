@@ -1,5 +1,5 @@
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { VERSION } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { VERSION } from "@earendil-works/pi-coding-agent";
 
 // Pi logo — pixel-accurate from pi-coding-agent SVG icon
 // 4×4 grid derived from SVG path coordinates (117.36-unit grid)
