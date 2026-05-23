@@ -1,9 +1,7 @@
 [opener]
-# edit = [{ run = 'kitty --detach vim "$@" > /dev/null 2>&1', orphan = true, desc = "vim" }]
 edit = [{ run = 'kitty vim "$@"', orphan = true, desc = "vim" }]
 rename = [{ run = 'kitty vim "$@"', block = true, desc = "rename" }]
-# edit = [{ run = 'kitty vim "$@"', block = true, desc = "vim" }]
-zed = [{ run = 'zeditor "$@"', block = true }]
+zed = [{ run = 'zeditor "$@"', orphan = true }]
 vector = [{ run = 'inkscape "$@"', orphan = true }]
 raster = [{ run = 'krita "$@"', orphan = true }]
 snip = [{ run = 'satty -f "$@"', orphan = true }]
@@ -24,20 +22,16 @@ prepend_rules = [
     ] },
     { mime = "inode/directory", use = [
         "zed_dir",
+        "open",
+    ] },
+    { mime = "video/*", use = [
+        "play",
     ] },
     { url = "*.svg", use = [
-        "edit",
         "vector",
+        "edit",
     ] },
-    { url = "*.png", use = [
-        "raster",
-        "snip",
-    ] },
-    { url = "*.jpg", use = [
-        "raster",
-        "snip",
-    ] },
-    { url = "*.jpeg", use = [
+    { mime = "image/*", use = [
         "raster",
         "snip",
     ] },
@@ -55,6 +49,7 @@ prepend_rules = [
     { url = "*.af", use = [
         "aff",
     ] },
+    { mime = "audio/*", use = ["play"] },
     { mime = "application/zip", use = ["extract"] },
     { mime = "application/x-tar", use = ["extract"] },
     { mime = "application/x-bzip2", use = ["extract"] },
@@ -67,7 +62,6 @@ prepend_rules = [
         "zed",
     ] },
 ]
-append_rules = []
 
 [mgr]
 linemode = "size_and_mtime"

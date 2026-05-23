@@ -77,3 +77,8 @@ desc = "Archive selected files"
 on = "!"
 run = 'shell "$SHELL" --block --confirm'
 desc = "Open shell here"
+
+[[mgr.prepend_keymap]]
+on = ["Z"]
+run = 'shell "zeditor \"$0\"" --confirm'
+desc = "Open in Zed"
