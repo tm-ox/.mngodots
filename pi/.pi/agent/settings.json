@@ -1,12 +1,12 @@
 {
-  "lastChangelogVersion": "0.75.4",
-  "defaultProvider": "xai",
-  "defaultModel": "grok-4-1-fast",
+  "lastChangelogVersion": "0.75.5",
+  "defaultProvider": "deepseek",
+  "defaultModel": "deepseek-v4-flash",
   "defaultThinkingLevel": "off",
   "theme": "tm-dk",
   "collapseChangelog": true,
   "packages": [
     "npm:pi-hermes-memory",
-    "npm:@tintinweb/pi-subagents"
+    "npm:pi-subagents"
   ]
 }

@@ -16,6 +16,11 @@ Delegate automatically — do not do the work inline when a subagent fits.
 | Find files, grep symbols, explore structure, git log/diff | `scout` |
 | Web search, docs lookup, vault research | `researcher` |
 | Write/edit code, run commands, multi-step implementation | `worker` |
+| Break a task into ordered steps before implementation | `planner` |
+| Review code for bugs, security issues, regressions | `reviewer` |
+| Compress file context into a handoff summary | `context-builder` |
+| Answer a specific technical question from codebase or docs | `oracle` |
+| General task that doesn't fit a specific role | `delegate` |
 
 - Spawn background (`run_in_background: true`) unless the result is needed before continuing.
 - For tasks with independent subtasks, spawn multiple agents in parallel.
