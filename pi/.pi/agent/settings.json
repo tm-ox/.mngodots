@@ -1,7 +1,12 @@
 {
-  "lastChangelogVersion": "0.73.1",
+  "lastChangelogVersion": "0.75.4",
   "defaultProvider": "xai",
   "defaultModel": "grok-4-1-fast",
   "defaultThinkingLevel": "off",
-  "theme": "tm-dk"
+  "theme": "tm-dk",
+  "collapseChangelog": true,
+  "packages": [
+    "npm:pi-hermes-memory",
+    "npm:@tintinweb/pi-subagents"
+  ]
 }
