@@ -355,3 +355,130 @@ ls -d ~/.config/mango*
 : 1779342633:0;source ~/.zshrc
 : 1779342748:0;claude
 : 1779343609:0;g.
+: 1779343615:0;gc "20260521"
+: 1779343617:0;gp
+: 1779357590:0;pacSs zed
+: 1779357757:0;go get -u github.com/resend/resend-go/v2
+: 1779359583:0;go mod tidy
+: 1779359767:0;go get -u github.com/go-redis/redis/v7
+: 1779359778:0;go mod tidy
+: 1779359811:0;claude
+: 1779359936:0;go get github.com/newrelic/go-agent/v3/integrations/nrredis-v7
+: 1779360044:0;go get github.com/newrelic/go-agent/v3/integrations/nrredis-v9
+: 1779360456:0;go mod tidy
+: 1779360494:0;go get github.com/clerk/clerk-sdk-go/v2
+: 1779360511:0;go get github.com/labstack/echo/v4
+: 1779365470:0;go mod tidy
+: 1779365493:0;go get github.com/newrelic/go-agent/v3/integrations/nrecho-v4
+: 1779365508:0;go get github.com/newrelic/go-agent/v3/integrations/nrpkgerrors
+: 1779366138:0;pacSs zed
+: 1779417836:0;paccache -duvk2
+: 1779417838:0;paccache -duvk1
+: 1779417851:0;du -sh /var/cache/pacman/pkg ~/.cache/yay
+: 1779417887:0;pacman -Qdt
+: 1779417973:0;sudo pacman -Rns haskell-base-compat-batteries haskell-foldable1-classes-compat haskell-sha surge-xt-common
+: 1779417984:0;pacman -Qdt\ 
+: 1779417986:0;pacman -Qdt
+: 1779418099:0;sudo pacman -Qtdq | sudo pacman -Rns -
+: 1779418111:0;pacman -Qdt
+: 1779418187:0;ncdu
+: 1779418310:0;which goose
+: 1779418457:0;which clara
+: 1779418463:0;pacSs clara
+: 1779418476:0;yaySs clara
+: 1779418659:0;sudo rm -rf .config/goose
+: 1779418998:0;which zeroclaw
+: 1779419123:0;rm -rf /home/tm/.cargo/bin/zeroclaw
+: 1779419126:0;which zeroclaw
+: 1779419302:0;pacSs zed
+: 1779419467:0;curl -fsSL https://raw.githubusercontent.com/zeroclaw-labs/zeroclaw/master/install.sh | bash
+: 1779419504:0;zeroclaw onboard
+: 1779420279:0;zeroclaw
+: 1779420291:0;zeroclaw gateway
+: 1779420339:0;cd .zeroclaw
+: 1779420341:0;.z
+: 1779420403:0;zeroclaw gateway
+: 1779421248:0;zeroclaw desktop
+: 1779421889:0;figma-linux
+: 1779422176:0;claude
+: 1779423020:0;aue
+: 1779423022:0;aoe
+: 1779423034:0;pacSs zed
+: 1779432822:0;zeroclaw
+: 1779432841:0;zeroclaw config
+: 1779432858:0;zeroclaw daemon
+: 1779432900:0;zeroclaw
+: 1779433058:0;zeroclaw agent
+: 1779434268:0;
+: 1779434987:0;zeroclaw models
+: 1779435033:0;zeroclaw onboard agents
+: 1779435429:0;\
+zeroclaw onboard
+: 1779435579:0;zeroclaw agents
+: 1779435583:0;zeroclaw
+: 1779435599:0;zeroclaw gateway
+: 1779435888:0;cd .zeroclaw
+: 1779435890:0;.z
+: 1779436013:0;zeroclaw models list
+: 1779436284:0;pacSs zed
+: 1779437186:0;zeroclaw auth status
+: 1779437258:0;zeroclaw models list
+: 1779437468:0;zeroclaw auth --help\
+
+: 1779437486:0;zeroclaw auth list
+: 1779437526:0;zeroclaw agent -a quick
+: 1779437620:0;zeroclaw daemon
+: 1779437772:0;zeroclaw agent -a quick
+: 1779438023:0;zeroclaw agent quick
+: 1779438026:0;zeroclaw agent -a quick
+: 1779438036:0;zeroclaw agent --help
+: 1779438502:0;zeroclaw config set providers.models.deepseek.api-key
+: 1779438549:0;zeroclaw agent -p deepseek --model deepseek-v4-flash -m "hello"
+: 1779439040:0;zeroclaw --version
+: 1779439838:0; zeroclaw service stop
+: 1779439854:0;cargo install --git https://github.com/zeroclaw-labs/zeroclaw.git\
+  --tag v0.8.0-beta-1 --locked --force
+: 1779440717:0;zeroclaw --version
+: 1779440732:0;zeroclaw service stop 2>/dev/null; rm -rf ~/.zeroclaw; zeroclaw onboard
+: 1779442276:0;zeroclaw
+: 1779442289:0;zeroclaw daemon
+: 1779442485:0;zeroclaw --version
+: 1779443017:0;cd .zeroclaw
+: 1779443020:0;.z
+: 1779444283:0;zeroclaw agent --help
+: 1779444294:0;zeroclaw agent -a quick
+: 1779445659:0;zeroclaw agent -a quick -m "ping"
+: 1779445681:0;zeroclaw agent -a quick
+: 1779446214:0;zeroclaw status
+: 1779446245:0;zeroclaw doctor
+: 1779446340:0;zeroclaw service
+: 1779446355:0;zeroclaw service stop
+: 1779446359:0;zeroclaw service start
+: 1779446363:0;zeroclaw service stop
+: 1779446369:0;zeroclaw daemon
+: 1779457024:0;aoe
+: 1779457148:0;pi update
+: 1779503454:0;nvm alias default 22
+: 1779503462:0;pi
+: 1779503474:0;which pi
+: 1779503492:0;which node
+: 1779503642:0;pacSs pi
+: 1779503702:0;pi update
+: 1779503715:0;npm install -g --ignore-scripts @earendil-works/pi-coding-agent
+: 1779503725:0;pi
+: 1779504523:0;cd .pi
+: 1779504531:0;pacSs zed
+: 1779504538:0;.z
+: 1779504545:0;pi
+: 1779505069:0;npm list -g --depth=0
+: 1779505117:0;npm install -g @anthropic-ai/claude-code
+: 1779505141:0;claude
+: 1779505449:0;cd .pi
+: 1779505450:0;.z
+: 1779505554:0;claude
+: 1779505824:0;pi install npm:pi-hermes-memory
+: 1779505965:0;pi
+: 1779511237:0;aoe
+: 1779511571:0;pi install npm:@tintinweb/pi-subagents
+: 1779516891:0;pi
+: 1779517581:0;g.
