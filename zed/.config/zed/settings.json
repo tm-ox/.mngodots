@@ -7,6 +7,17 @@
 // custom settings, run the `open default settings` command
 // from the command palette or from `Zed` application menu.
 {
+  "icon_theme": {
+    "mode": "dark",
+    "light": "Zed (Default)",
+    "dark": "Zed (Default)",
+  },
+  "debugger": {
+    "dock": "left",
+  },
+  "terminal": {
+    "dock": "bottom",
+  },
   "cli_default_open_behavior": "new_window",
   "collaboration_panel": {
     "dock": "left",
@@ -79,7 +90,7 @@
   "ui_font_size": 16,
   "buffer_font_size": 12.5,
   "theme": {
-    "mode": "system",
+    "mode": "dark",
     "light": "Ayu Mirage",
     "dark": "Hex Ayu Mirage",
   },
@@ -103,7 +114,7 @@
     // "tab.inactive_background": "#242835dd"
     // "tab_bar.background": "#282E42"
     "editor.document_highlight.read_background": "#000000",
-    "editor.document_highlight.bracket_background": "#E03616",
+    "editor.document_highlight.bracket_background": "#646A83",
   },
   "relative_line_numbers": "enabled",
   "vertical_scroll_margin": 8,

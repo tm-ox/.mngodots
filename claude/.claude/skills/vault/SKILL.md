@@ -26,8 +26,8 @@ Do not perform any read, write, move, or search operation on the vault until boo
 ## Core Rules
 
 1. **Vault root:** `/home/tm/Documents/vault` — all MCP paths are relative to this.
-2. **Johnny Decimal:** Respect the 10-99 hierarchy.
-3. **Safety Lock:** Never access or list `10_Inbox` unless explicitly commanded.
+2. **Johnny Decimal:** Respect the 3-level hierarchy (Area → Category → ID).
+3. **Safety Lock:** Never access or list `11_inbox-user` unless explicitly commanded.
 4. **Tool preference:** MCP mode when available; filesystem mode otherwise.
 
 ## Tool Mapping
