@@ -20,6 +20,10 @@ AoE runs subagents in persistent tmux sessions. Use it instead of the Agent tool
 
 ## Standard Dispatch Pattern
 
+### 0. Pre-dispatch check
+
+Run `aoe list` before creating sessions. Remove any completed or orphaned sessions with `aoe remove {id}` before proceeding.
+
 ### 1. Create session
 
 ```bash
@@ -67,7 +71,9 @@ aoe remove {id}
 rm -f /tmp/aoe-{id}.md /tmp/aoe-{id}-ready.md
 ```
 
-This also removes the worktree and branch if `-w` was used.
+This removes the AOE record, tmux session, and worktree/branch if `-w` was used.
+
+**Never use `tmux kill-session` on AOE sessions** — it destroys the tmux pane but leaves the AOE record orphaned. Always use `aoe remove`.
 
 ## Parallel Dispatch
 

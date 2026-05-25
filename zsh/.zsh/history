@@ -496,3 +496,66 @@ zeroclaw onboard
 : 1779547287:0;pi update
 : 1779547364:0;pi
 : 1779547715:0;g.
+: 1779547717:0;gc "20250523"
+: 1779547720:0;gp
+: 1779548003:0;pacSs zed
+: 1779548028:0;yaySs zed-
+: 1779595132:0;pacSs zed
+: 1779595140:0;yaySs zed-
+: 1779596303:0;figma-linux
+: 1779596341:0;pacSs penpot
+: 1779596345:0;yaySs penpot
+: 1779596369:0;yay penpot
+: 1779597791:0;claude
+: 1779597894:0;yay -S rustup pnpm clojure babashka emscripten emsdk jdk-openjdk jdk11-openjdk
+: 1779598022:0;rm -rf ~/.cache/yay/penpot
+: 1779598102:0;rm -rf ~/.cache/pnpm/
+: 1779598498:0;figma-linux
+: 1779610684:0;go mod tidy
+: 1779611366:0;claude
+: 1779611467:0;sudo pacman -S go
+: 1779611480:0;which go
+: 1779611773:0;go mod tidy
+: 1779611906:0;pacSs zed
+: 1779612026:0;pkill gopls
+: 1779612086:0;go mod tidy
+: 1779612716:0;pkill gopls
+: 1779613646:0;task run
+: 1779614226:0;sudo -u postgres initdb -D /var/lib/postgres/data
+: 1779614277:0;sudo systemctl enable --now postgresql
+: 1779614324:0;sudo rm -rf /var/lib/postgres/data
+: 1779614332:0;sudo -u postgres initdb -D /var/lib/postgres/data
+: 1779614376:0;sudo systemctl start postgresql
+: 1779614395:0;sudo -u postgres createdb boilerplate
+: 1779614401:0;task run
+: 1779614552:0;sudo systemctl start valkey
+: 1779614557:0;task run
+: 1779615481:0;bun dev
+: 1779615652:0;bun install
+: 1779615884:0;bun dev
+: 1779616326:0;bun intsall
+: 1779616333:0;bun install
+: 1779616341:0;bun dev
+: 1779618502:0;task run
+: 1779618787:0;git init
+: 1779618818:0;git remote add origin git@github.com:tm-ox/go-boilerplate.git\
+git branch -M main
+: 1779618835:0;g.
+: 1779618841:0;git status
+: 1779618890:0;gc "init"
+: 1779618896:0;git push -u origin main
+: 1779618976:0;g.
+: 1779618978:0;gc "init"
+: 1779618981:0;gp
+: 1779619172:0;sudo systemctl stop valkey
+: 1779619180:0;sudo systemctl stop postgresql
+: 1779627967:0;go mod init github.com/tm-ox/go-html-templates
+: 1779627978:0;touch main.go
+: 1779628350:0;go run .
+: 1779629000:0;go mod tidy
+: 1779629037:0;go run .
+: 1779674686:0;claude
+: 1779674886:0;pacSs zed
+: 1779676078:0;aoe
+: 1779676165:0;yay agent-of-empires
+: 1779677047:0;g.
