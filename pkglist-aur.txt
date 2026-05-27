@@ -17,6 +17,8 @@ ripdrag-git
 themix-full-git
 upwork
 vim-wayland-clipboard-git
+whisper.cpp
 winetricks-git
+wtype
 xf86-video-vmware
 yay

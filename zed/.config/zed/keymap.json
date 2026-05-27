@@ -10,6 +10,7 @@
     "context": "Workspace",
     "bindings": {
       // "shift shift": "file_finder::Toggle"
+      // "ctrl-alt-v": ["task::Spawn", { "task_label": "Voice Input" }],
     },
   },
   {
@@ -127,4 +128,9 @@
       "ctrl-j": "search::NextHistoryQuery",
     },
   },
+  {
+    "bindings": {
+      "space t": "editor::ToggleTabBar"
+    }
+  }
 ]

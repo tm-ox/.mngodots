@@ -48,7 +48,7 @@ alias .h='helix'
 alias .rd='ripdrag -W 800 -H 600 -s 48 -r -a $(fzf -m +s)'
 alias .v='vim'
 alias .z='zeditor .'
-alias .lb='cd $HOME/repos/livebook && MIX_ENV=prod mix phx.server'
+alias .a='cd $HOME/Documents/agents/workspace && aoe'
 
 alias g.='git add .'
 alias gc='git commit -m'
