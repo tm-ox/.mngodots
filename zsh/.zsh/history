@@ -559,3 +559,147 @@ git branch -M main
 : 1779676078:0;aoe
 : 1779676165:0;yay agent-of-empires
 : 1779677047:0;g.
+: 1779677064:0;gc "20260525"
+: 1779677066:0;gp
+: 1779677674:0;yaySs faster-whisper
+: 1779677688:0;pacSs faster-whisper
+: 1779677736:0;yay -S wtype python-faster-whisper
+: 1779678626:0;templ --version
+: 1779678811:0;rm -rf ~/.cache/yay/ctranslate2 ~/.cache/yay/python-faster-whisper
+: 1779678830:0;yay -S wtype whisper.cpp
+: 1779679437:0;bun --version
+: 1779679639:0;go mod init github.com/tm-ox/go-datastar
+: 1779679660:0;go get github.com/starfederation/datastar-go/datastar\
+go get github.com/a-h/templ
+: 1779679678:0;bun init -y\
+bun add -d tailwindcss @tailwindcss/cli\
+npx tailwindcss init
+: 1779679738:0;npx tailwindcss init
+: 1779679909:0;claude
+: 1779680150:0;mkdir -p cmd views static && touch cmd/main.go views/index.templ static/input.css
+: 1779680343:0;go mod tidy
+: 1779680451:0;templ generate
+: 1779680600:0;make -j3
+: 1779680638:0;make dev
+: 1779680647:0;make
+: 1779680658:0;make dev
+: 1779680993:0;go mod tidy
+: 1779681122:0;whisper-cpp-download-ggml-model.sh base.en
+: 1779681168:0;make dev
+: 1779681105:0;which whisper.cpp
+: 1779681272:0;mkdir -p ~/.local/share/whisper.cpp\
+  curl -L -o ~/.local/share/whisper.cpp/ggml-base.en.bin \\
+    "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin"
+: 1779681605:0;VOICE_DURATION=3 bash -x ~/.config/scripts/voice-input.sh
+: 1779681902:0; echo $WAYLAND_DISPLAY
+: 1779682496:0;pactl list sources | grep -A 10 "analog.*input\|input.*analog" | grep -E "Name|Volume|Mute"
+: 1779682639:0;pactl set-source-volume @DEFAULT_SOURCE@ 150%
+: 1779682774:0;curl -L -o ~/.local/share/whisper.cpp/ggml-small.en.bin \\
+    "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en.bin"
+: 1779692514:0;pacS glow
+: 1779692528:0;glow
+: 1779692692:0;.v
+: 1779692730:0;.g
+: 1779692787:0;glow
+: 1779693367:0;cd ../agents/workspace
+: 1779693573:0;sudo pacman -Rns glow
+: 1779707088:0;figma-linux
+: 1779707718:0;killall Affinity.exe
+: 1779777605:0;git clone https://github.com/templui/templui-quickstart.git
+: 1779777634:0;cd templui-quickstart
+: 1779777669:0;ls -la
+: 1779777684:0;rm -rf .git
+: 1779777687:0;ls -la
+: 1779777698:0;cd ..
+: 1779777707:0;ls -la
+: 1779777714:0;cd templui-quickstart
+: 1779777722:0;cp .env.example .env\
+go mod tidy\
+task dev
+: 1779778216:0;cd ..
+: 1779778218:0;git clone https://github.com/zangster300/northstar.git
+: 1779778225:0;cd northstar
+: 1779778239:0;go mod tidy
+: 1779778474:0;go tool task live
+: 1779779166:0;make dev
+: 1779780743:0;go install github.com/a-h/templ/cmd/templ@latest
+: 1779780751:0;make dev
+: 1779780840:0;aoe
+: 1779780871:0;yaySs agent-of-empire
+: 1779780894:0;yay agent-of-empires
+: 1779780936:0;yaySs zed
+: 1779780943:0;pacSs zed
+: 1779780950:0;aoe
+: 1779781432:0; bun run build:css\
+
+: 1779781441:0;wc -c static/app.css
+: 1779781462:0;make dev
+: 1779801828:0;go get github.com/adrg/frontmatter                                         \
+  go get github.com/yuin/goldmark\
+
+: 1779802504:0;go mod tidy
+: 1779804106:0;make dev
+: 1779805597:0;templ generate\
+
+: 1779805604:0;make dev
+: 1779805944:0; bun add -d @tailwindcss/typography\
+
+: 1779806013:0;make dev
+: 1779806693:0;aoe
+: 1779808053:0;make dev
+: 1779808549:0;aoe
+: 1779810277:0;templ generate\
+
+: 1779811264:0;make dev
+: 1779811779:0;templ generate\
+
+: 1779812322:0;make dev
+: 1779847915:0;yaySs agent-of-empire
+: 1779847937:0;yay agent-of-empires
+: 1779847981:0;aoe
+: 1779848595:0;go get gopkg.in/yaml.v3\
+
+: 1779850041:0;go mod tidy
+: 1779851142:0;templ generate\
+
+: 1779851481:0;make dev
+: 1779851910:0;templ generate\
+
+: 1779851913:0;make dev
+: 1779855188:0;go mod tidy
+: 1779856626:0;aoe
+: 1779866980:0;pacSs zed
+: 1779866998:0;aoe
+: 1779867030:0;make dev
+: 1779871487:0;.w
+: 1779871490:0;cd tmox.net
+: 1779871493:0;.z
+: 1779871989:0;make dev
+: 1779881934:0;aoe
+: 1779882232:0;make dev
+: 1779886691:0;go mod tidy
+: 1779886747:0;make dev
+: 1779887913:0;curl -o /home/tm/repos/go/go-datastar/static/datastar.js \\
+    "https://cdn.jsdelivr.net/npm/@starfederation/datastar/bundles/datastar.js"\
+
+: 1779887950:0;make dev
+: 1779888041:0;curl -o /home/tm/repos/go/go-datastar/static/datastar.js \\
+    "https://cdn.jsdelivr.net/gh/starfederation/datastar@1.0.0-beta.11/bundles/datastar.js"\
+
+: 1779888057:0;make dev
+: 1779888321:0;curl -o /home/tm/repos/go/go-datastar/static/datastar.js \\
+    "https://cdn.jsdelivr.net/gh/starfederation/datastar@v1.0.1/bundles/datastar.js"\
+
+: 1779888332:0;make dev
+: 1779891029:0;git init
+: 1779891033:0;git remote add origin git@github.com:tm-ox/go-datastar.git\
+git branch -M main
+: 1779891045:0;g.
+: 1779891056:0;gc "init"
+: 1779891063:0;git push -u origin main
+: 1779891471:0;zrc
+: 1779891605:0;source ~/.zrc
+: 1779891625:0;source ~/zrc
+: 1779891671:0;source ~/.zsh
+: 1779891680:0;.a
+: 1779891763:0;g.
