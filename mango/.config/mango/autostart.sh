@@ -1,39 +1,42 @@
 #!/bin/sh
 
+# Required by DankMaterialShell and some Wayland apps
 export XDG_CURRENT_DESKTOP="wlroots"
+
+# Disable matugen auto-theming on startup (apply manually when needed)
 export DMS_DISABLE_MATUGEN=1
+
+# Start DankMaterialShell — bar, notifications, launchers, etc.
+# Requires: dms-shell-git (AUR)
 dms run &
+
+# Clipboard history daemon — stores entries, accessed via SUPER+SHIFT+r
+# Requires: cliphist, wl-clipboard
 wl-paste --watch cliphist store &
 
-# Propagate Wayland env to D-Bus and systemd user session before portal init
+# Propagate Wayland env to D-Bus and systemd so portals and apps find the display
 dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP=wlroots
+
+# Polkit agent — handles privilege escalation dialogs
+# Requires: polkit-kde-agent
 /usr/lib/polkit-kde-authentication-agent-1 &
 
+# Tells Java apps this is LG3D — prevents blank windows in some apps
 wmname LG3D &
 
-# Start wlr backend via systemd (blocks until active and registered on D-Bus)
+# Start wlr XDG desktop portal (screen sharing, file picker for wlroots)
+# Requires: xdg-desktop-portal-wlr
 systemctl --user start xdg-desktop-portal-wlr.service
-# Restart main portal in background to pick up wlr backend and correct env
+
+# Restart main portal to pick up wlr backend and correct environment
 systemctl --user restart xdg-desktop-portal.service &
 
-# # swaybg -i ~/Pictures/background.jpg &
-# waybar -c ~/.config/waybar/config -s ~/.config/waybar/style.css &
-# swaync &
-
+# Start MEGA sync daemon once network is available (30s timeout)
+# Requires: megacmd (AUR)
 (/usr/lib/systemd/systemd-networkd-wait-online --any -q --timeout=30 && /usr/bin/mega-sync --daemon) &
 
-# swayidle -w \
-#   timeout 600 'swaylock -f && systemctl suspend' \
-#   before-sleep 'swaylock -f' &
-
-# # Focus Monitor eDP-1 (This usually happens by default)
+# Monitor layout overrides — uncomment if multi-monitor init order needs forcing
 # mangowc focusmonitor eDP-1
-
-# # Move to Tag 5 on eDP-1 (Ensures the eDP-1 tags are initialized)
 # mangowc workspace 5
-
-# # Focus Monitor HDMI-A-1
 # mangowc focusmonitor HDMI-A-1
-
-# # Move to Tag 1 on HDMI-A-1 (Forces tags 1-4 to initialize on the external monitor)
 # mangowc workspace 1

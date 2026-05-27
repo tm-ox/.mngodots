@@ -7,6 +7,9 @@
 // custom settings, run the `open default settings` command
 // from the command palette or from `Zed` application menu.
 {
+  "tabs": {
+    "file_icons": false,
+  },
   "icon_theme": {
     "mode": "dark",
     "light": "Zed (Default)",
@@ -122,7 +125,7 @@
     "show": "never",
   },
   "tab_bar": {
-    "show": false,
+    "show": false
   },
   "toolbar": {
     "breadcrumbs": true,
