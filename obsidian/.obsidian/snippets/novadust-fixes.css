@@ -1,0 +1,30 @@
+/* NovaDust readability fixes */
+
+/* ── Root cause: --interactive-normal is set to bright orange (#ffa161) ─────
+   Obsidian uses this for standard button/select backgrounds.
+   Near-white text on orange = ~2.2:1 contrast — unreadable.
+   Override to a dark surface that works with the theme's palette. */
+.theme-dark {
+    --interactive-normal:       #303f51;   /* --light-blue: readable dark surface  */
+    --interactive-hover:        #3a4d63;   /* slightly lighter on hover            */
+    --text-on-accent:           #eeead1;   /* --soft-white: text on accent bg      */
+    --text-on-accent-inverted:  #eeead1;
+}
+
+/* ── PM plugin table th ──────────────────────────────────────────────────────
+   NovaDust applies `background-color: var(--bright-red) !important` to ALL th.
+   Restore PM plugin's own intended dark header. */
+.pm-table thead th {
+    background-color: var(--background-primary) !important;
+    color: var(--text-muted) !important;
+}
+
+/* ── Tags ───────────────────────────────────────────────────────────────────*/
+.tag {
+    color: #eeead1 !important;
+}
+
+/* ── Toggle on-state ────────────────────────────────────────────────────────*/
+.checkbox-container.is-enabled {
+    background-color: #5dcbc3;
+}

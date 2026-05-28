@@ -138,7 +138,7 @@
     "dock": "right",
   },
   "outline_panel": {
-    "dock": "right",
+    "dock": "left",
   },
   "file_finder": {
     // Whether to show file icons in the file finder.
