@@ -716,3 +716,25 @@ git branch -M main
 : 1779934146:0;gp
 : 1779937829:0;pacSs zed
 : 1779939051:0;g.
+: 1779939053:0;gc "20260528"
+: 1779939055:0;gp
+: 1779947568:0;pacSs obsidian-cli
+: 1779947571:0;pacSs obsidian
+: 1779947580:0;yaySs obsidian-cli
+: 1779947595:0;yaySs obsidian
+: 1779947881:0;sudo pacman -S go-yq\
+
+: 1779948033:0;faillock --reset --user tm\
+
+: 1779948037:0;sudo pacman -S go-yq\
+
+: 1779964949:0;templ 
+: 1779964960:0;templ generate
+: 1779964981:0;make dev
+: 1779965091:0;go mod tidy
+: 1779965186:0;make dev
+: 1779968535:0;g.
+: 1779968552:0;gc "type and client filters"
+: 1779968554:0;gp
+: 1779968642:0;make dev
+: 1779971728:0;g.
