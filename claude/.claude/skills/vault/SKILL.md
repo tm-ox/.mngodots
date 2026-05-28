@@ -5,13 +5,25 @@ description: Instructions for managing the Obsidian Johnny Decimal vault via the
 
 # Vault Manager
 
-## Bootstrap
+## Interface Detection
 
-Read `AGENTS.md` at the vault root before performing any operation:
+Before any vault operation, check CLI availability:
 
 ```bash
-obsidian read vault="vault" path="AGENTS.md"
+obsidian --version 2>/dev/null
 ```
+
+- **Exit 0** → CLI available. Use **CLI mode** (preferred).
+- **Non-zero / not found** → CLI unavailable (headless server, no Obsidian install). Use **filesystem fallback**.
+
+Do not use the fallback if the CLI is available.
+
+## Bootstrap
+
+Read `AGENTS.md` at the vault root before performing any operation.
+
+- **CLI mode:** `obsidian read vault="vault" path="AGENTS.md"`
+- **Fallback:** `Read` tool at `/home/tm/Documents/vault/AGENTS.md`
 
 Parse and internalize all rules defined there — filing, naming, templates, tagging, hydration, archiving. Apply strictly for the session.
 
@@ -21,24 +33,23 @@ Do not perform any read, write, move, or search operation on the vault until boo
 
 1. **Vault root:** `/home/tm/Documents/vault`
 2. **Johnny Decimal:** Respect the 3-level hierarchy (Area → Category → ID).
-3. **Safety Lock:** Never access or list `11_inbox-user` unless explicitly commanded.
-4. **Primary interface:** Obsidian CLI (`obsidian` at `/usr/bin/obsidian`, vault name `"vault"`).
-5. **Frontmatter edits:** Use `obsidian read` to fetch current state, then `Edit` tool for targeted field changes. Never use `yq -i` on frontmatter+body files.
+3. **Safety Lock:** Never access or list `11-inbox-user` unless explicitly commanded.
+4. **Frontmatter edits:** Always read current state first, then `Edit` tool for targeted field changes. Never use `yq -i` on frontmatter+body files.
 
 ## Tool Mapping
 
-| Operation | Command |
-|-----------|---------|
-| Read note | `obsidian read vault="vault" path="<path>"` |
-| List files | `obsidian files vault="vault" path="<folder>"` |
-| Search | `obsidian search vault="vault" query="<query>"` |
-| List tags | `obsidian tags vault="vault"` |
-| Properties | `obsidian properties vault="vault" path="<path>"` |
-| Write/new | `Write` tool to `/home/tm/Documents/vault/<path>` |
-| Patch/append | `Edit` tool on absolute path |
-| Frontmatter | `obsidian read` → `Edit` targeted field in YAML block |
-| Move | `obsidian move vault="vault" path="<src>" dest="<dest>"` |
-| Tasks (markdown) | `obsidian tasks vault="vault" path="<path>"` |
+| Operation | CLI mode (preferred) | Filesystem fallback |
+|-----------|----------------------|---------------------|
+| Read note | `obsidian read vault="vault" path="<path>"` | `Read` tool at absolute path |
+| List files | `obsidian files vault="vault" path="<folder>"` | `Bash: find /home/tm/Documents/vault/<folder> -maxdepth 1` |
+| Search | `obsidian search vault="vault" query="<query>"` | `Bash: grep -r "<query>" /home/tm/Documents/vault --include="*.md"` |
+| List tags | `obsidian tags vault="vault"` | `Bash: grep -rh "^tags:" /home/tm/Documents/vault --include="*.md"` |
+| Properties | `obsidian properties vault="vault" path="<path>"` | `Read` tool — parse frontmatter manually |
+| Write/new | `Write` tool to `/home/tm/Documents/vault/<path>` | same |
+| Patch/append | `Edit` tool on absolute path | same |
+| Frontmatter | `obsidian read` → `Edit` targeted field | `Read` tool → `Edit` targeted field |
+| Move | `obsidian move vault="vault" path="<src>" dest="<dest>"` | `Bash: mv` |
+| Tasks | `obsidian tasks vault="vault" path="<path>"` | `Bash: grep -n "- \[ \]\|- \[x\]" <path>` |
 
 ## Usage
 
