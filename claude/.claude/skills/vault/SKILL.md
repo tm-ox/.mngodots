@@ -43,7 +43,7 @@ Do not perform any read, write, move, or search operation on the vault until boo
 | Read note | `obsidian read vault="vault" path="<path>"` | `Read` tool at absolute path |
 | List files | `obsidian files vault="vault" path="<folder>"` | `Bash: find $HOME/Documents/vault/<folder> -maxdepth 1` |
 | Search | `obsidian search vault="vault" query="<query>"` | `Bash: grep -r "<query>" $HOME/Documents/vault --include="*.md"` |
-| List tags | `obsidian tags vault="vault"` | `Bash: grep -rh "^tags:" $HOME/Documents/vault --include="*.md"` |
+| List tags | `obsidian tags vault="vault"` | `Bash: grep -rh "^tags:$\|^  - " $HOME/Documents/vault --include="*.md"` |
 | Properties | `obsidian properties vault="vault" path="<path>"` | `Read` tool — parse frontmatter manually |
 | Write/new | `Write` tool to `$HOME/Documents/vault/<path>` | same |
 | Patch/append | `Edit` tool on absolute path | same |
