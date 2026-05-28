@@ -23,7 +23,7 @@ Do not use the fallback if the CLI is available.
 Read `AGENTS.md` at the vault root before performing any operation.
 
 - **CLI mode:** `obsidian read vault="vault" path="AGENTS.md"`
-- **Fallback:** `Read` tool at `/home/tm/Documents/vault/AGENTS.md`
+- **Fallback:** `Read` tool at `$HOME/Documents/vault/AGENTS.md`
 
 Parse and internalize all rules defined there — filing, naming, templates, tagging, hydration, archiving. Apply strictly for the session.
 
@@ -31,7 +31,7 @@ Do not perform any read, write, move, or search operation on the vault until boo
 
 ## Core Rules
 
-1. **Vault root:** `/home/tm/Documents/vault`
+1. **Vault root:** `$HOME/Documents/vault`
 2. **Johnny Decimal:** Respect the 3-level hierarchy (Area → Category → ID).
 3. **Safety Lock:** Never access or list `11-inbox-user` unless explicitly commanded.
 4. **Frontmatter edits:** Always read current state first, then `Edit` tool for targeted field changes. Never use `yq -i` on frontmatter+body files.
@@ -41,11 +41,11 @@ Do not perform any read, write, move, or search operation on the vault until boo
 | Operation | CLI mode (preferred) | Filesystem fallback |
 |-----------|----------------------|---------------------|
 | Read note | `obsidian read vault="vault" path="<path>"` | `Read` tool at absolute path |
-| List files | `obsidian files vault="vault" path="<folder>"` | `Bash: find /home/tm/Documents/vault/<folder> -maxdepth 1` |
-| Search | `obsidian search vault="vault" query="<query>"` | `Bash: grep -r "<query>" /home/tm/Documents/vault --include="*.md"` |
-| List tags | `obsidian tags vault="vault"` | `Bash: grep -rh "^tags:" /home/tm/Documents/vault --include="*.md"` |
+| List files | `obsidian files vault="vault" path="<folder>"` | `Bash: find $HOME/Documents/vault/<folder> -maxdepth 1` |
+| Search | `obsidian search vault="vault" query="<query>"` | `Bash: grep -r "<query>" $HOME/Documents/vault --include="*.md"` |
+| List tags | `obsidian tags vault="vault"` | `Bash: grep -rh "^tags:" $HOME/Documents/vault --include="*.md"` |
 | Properties | `obsidian properties vault="vault" path="<path>"` | `Read` tool — parse frontmatter manually |
-| Write/new | `Write` tool to `/home/tm/Documents/vault/<path>` | same |
+| Write/new | `Write` tool to `$HOME/Documents/vault/<path>` | same |
 | Patch/append | `Edit` tool on absolute path | same |
 | Frontmatter | `obsidian read` → `Edit` targeted field | `Read` tool → `Edit` targeted field |
 | Move | `obsidian move vault="vault" path="<src>" dest="<dest>"` | `Bash: mv` |
