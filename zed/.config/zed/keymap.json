@@ -64,6 +64,7 @@
       "}": ["workspace::SendKeystrokes", "} z z"],
       // "j": ["workspace::SendKeystrokes", "g j"],
       // "k": ["workspace::SendKeystrokes", "g k"]
+      "space t": "editor::ToggleTabBar",
     },
   },
   {
@@ -128,9 +129,4 @@
       "ctrl-j": "search::NextHistoryQuery",
     },
   },
-  {
-    "bindings": {
-      "space t": "editor::ToggleTabBar"
-    }
-  }
 ]
