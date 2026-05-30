@@ -1,55 +1,57 @@
 ---
 name: vault
-description: Instructions for managing the Obsidian Johnny Decimal vault via the Obsidian CLI.
+description: Instructions for managing the Obsidian Johnny Decimal vault via direct filesystem access.
 ---
 
 # Vault Manager
 
-## Interface Detection
-
-Before any vault operation, check CLI availability:
-
-```bash
-obsidian --version 2>/dev/null
-```
-
-- **Exit 0** → CLI available. Use **CLI mode** (preferred).
-- **Non-zero / not found** → CLI unavailable (headless server, no Obsidian install). Use **filesystem fallback**.
-
-Do not use the fallback if the CLI is available.
-
 ## Bootstrap
 
-Read `AGENTS.md` at the vault root before performing any operation.
+Read `AGENTS.md` at the vault root before performing any operation:
 
-- **CLI mode:** `obsidian read vault="vault" path="AGENTS.md"`
-- **Fallback:** `Read` tool at `$HOME/Documents/vault/AGENTS.md`
+`Read` tool at `$HOME/Documents/vault/AGENTS.md`
 
-Parse and internalize all rules defined there — filing, naming, templates, tagging, hydration, archiving. Apply strictly for the session.
-
-Do not perform any read, write, move, or search operation on the vault until bootstrap is complete.
+Parse and internalize all rules defined there — filing, naming, templates, tagging, archiving. Apply strictly for the session. Do not perform any vault operation until bootstrap is complete.
 
 ## Core Rules
 
 1. **Vault root:** `$HOME/Documents/vault`
 2. **Johnny Decimal:** Respect the 3-level hierarchy (Area → Category → ID).
-3. **Safety Lock:** Never access or list `11-inbox-user` unless explicitly commanded.
-4. **Frontmatter edits:** Always read current state first, then `Edit` tool for targeted field changes. Never use `yq -i` on frontmatter+body files.
+3. **Safety lock:** Never access or list `11-inbox-user` unless explicitly commanded.
+4. **Frontmatter writes:** `Edit` tool only — targeted field replacement. Never `yq -i`.
+5. **Frontmatter reads:** isolate block via `awk`, pipe to `yq`. Never pass a frontmatter+body file directly to `yq`.
+6. **Full file reads:** `Read` tool only when body content is needed. Use `limit`/`offset` for large files.
 
 ## Tool Mapping
 
-| Operation | CLI mode (preferred) | Filesystem fallback |
-|-----------|----------------------|---------------------|
-| Read note | `obsidian read vault="vault" path="<path>"` | `Read` tool at absolute path |
-| List files | `obsidian files vault="vault" path="<folder>"` | `Bash: find $HOME/Documents/vault/<folder> -maxdepth 1` |
-| Search | `obsidian search vault="vault" query="<query>"` | `Bash: grep -r "<query>" $HOME/Documents/vault --include="*.md"` |
-| List tags | `obsidian tags vault="vault"` | `Bash: grep -rh "^tags:$\|^  - " $HOME/Documents/vault --include="*.md"` |
-| Properties | `obsidian properties vault="vault" path="<path>"` | `Read` tool — parse frontmatter manually |
-| Write/new | `Write` tool to `$HOME/Documents/vault/<path>` | same |
-| Patch/append | `Edit` tool on absolute path | same |
-| Frontmatter | `obsidian read` → `Edit` targeted field | `Read` tool → `Edit` targeted field |
-| Move | `obsidian move vault="vault" path="<src>" dest="<dest>"` | `Bash: mv` |
-| Tasks | `obsidian tasks vault="vault" path="<path>"` | `Bash: grep -n "- \[ \]\|- \[x\]" <path>` |
+| Operation | Command/Tool |
+|---|---|
+| Find files by content or tag | `/usr/bin/rg -l '"<pattern>"' $HOME/Documents/vault/` |
+| Scoped search | `/usr/bin/rg '"<pattern>"' $HOME/Documents/vault/<path>/` |
+| Find by frontmatter field value | `/usr/bin/rg -l 'field: "<value>"' $HOME/Documents/vault/<path>/` |
+| List files in folder | `find $HOME/Documents/vault/<folder> -maxdepth 1 -name "*.md"` |
+| Extract frontmatter field | `awk '/^---$/{p++; next} p==1' <file> \| yq '.<field>'` |
+| Extract multiple fields | `awk '/^---$/{p++; next} p==1' <file> \| yq '{"status": .status, "title": .title}'` |
+| Read full file | `Read` tool |
+
+`rg` is recursive by default — use `/usr/bin/rg -l` only, never `-rl`. Inside subshells, `-rl` parses as `--replace l` and corrupts output paths.
+
+PM task files store status as quoted strings — search patterns must match literally: `/usr/bin/rg -l 'status: "todo"'`. Task status values: `"todo"`, `"in-progress"`, `"blocked"`, `"review"`, `"done"`, `"cancelled"`.
+| Update frontmatter field | `Edit` tool — exact string match on target line |
+| Update body | `Edit` tool |
+| Create file | `Write` tool |
+| Move file | `Bash: mv` |
+
+## PM Plugin
+
+The Project Manager plugin reads frontmatter on Obsidian open — direct edits are fully compatible without Obsidian running. When updating any task field, also update `updatedAt` to current ISO timestamp.
+
+## Tool Availability
+
+Attempt operations directly. If `rg` or `yq` returns `command not found`, stop and request installation before retrying:
+
+- `rg` → use `/usr/bin/rg` explicitly; if absent, `sudo pacman -S ripgrep`
+- `yq` → `sudo pacman -S go-yq`
 
 ## Usage
 
