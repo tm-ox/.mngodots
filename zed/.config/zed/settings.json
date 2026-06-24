@@ -7,6 +7,10 @@
 // custom settings, run the `open default settings` command
 // from the command palette or from `Zed` application menu.
 {
+  "diff_view_style": "unified",
+  "edit_predictions": {
+    "mode": "subtle"
+  },
   "tabs": {
     "file_icons": false,
   },
@@ -23,6 +27,7 @@
   },
   "cli_default_open_behavior": "new_window",
   "collaboration_panel": {
+    "button": false,
     "dock": "left",
   },
   "git_panel": {

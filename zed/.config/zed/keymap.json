@@ -129,4 +129,21 @@
       "ctrl-j": "search::NextHistoryQuery",
     },
   },
+  {
+    "context": "Editor && edit_prediction",
+    "bindings": {
+      "alt-enter": "editor::AcceptEditPrediction"
+    }
+  },
+  {
+    "context": "Editor && edit_prediction",
+    "unbind": {
+      "alt-tab": "editor::AcceptEditPrediction"
+    }
+  },
+  {
+    "bindings": {
+      "ctrl-alt-shift-b": "outline_panel::CollapseAllEntries"
+    }
+  }
 ]

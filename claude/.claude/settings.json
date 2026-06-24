@@ -1,50 +1,55 @@
 {
-  "effortLevel": "medium",
-  "enabledPlugins": {
-    "gopls-lsp@claude-plugins-official": true
-  },
   "env": {
     "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1",
     "RTK_TELEMETRY_DISABLED": "1"
   },
-  "feedbackSurveyRate": 0,
+  "permissions": {
+    "allow": [
+      "Bash(curl -s http://localhost:8080*)",
+      "Bash(aoe *)",
+      "mcp__pencil",
+      "Bash(gh issue create *)",
+      "Bash(gh issue edit *)"
+    ],
+    "defaultMode": "auto"
+  },
   "hooks": {
     "ElicitationResult": [
       {
         "hooks": [
           {
-            "command": "sh -c '[ -n \"$AOE_INSTANCE_ID\" ] || exit 0; mkdir -p /tmp/aoe-hooks/$AOE_INSTANCE_ID 2>/dev/null; printf running > /tmp/aoe-hooks/$AOE_INSTANCE_ID/status 2>/dev/null; exit 0'",
-            "type": "command"
+            "type": "command",
+            "command": "sh -c '[ -n \"$AOE_INSTANCE_ID\" ] || exit 0; mkdir -p /tmp/aoe-hooks/$AOE_INSTANCE_ID 2>/dev/null; printf running > /tmp/aoe-hooks/$AOE_INSTANCE_ID/status 2>/dev/null; exit 0'"
           }
         ]
       }
     ],
     "Notification": [
       {
+        "matcher": "permission_prompt|elicitation_dialog",
         "hooks": [
           {
-            "command": "sh -c '[ -n \"$AOE_INSTANCE_ID\" ] || exit 0; mkdir -p /tmp/aoe-hooks/$AOE_INSTANCE_ID 2>/dev/null; printf waiting > /tmp/aoe-hooks/$AOE_INSTANCE_ID/status 2>/dev/null; exit 0'",
-            "type": "command"
+            "type": "command",
+            "command": "sh -c '[ -n \"$AOE_INSTANCE_ID\" ] || exit 0; mkdir -p /tmp/aoe-hooks/$AOE_INSTANCE_ID 2>/dev/null; printf waiting > /tmp/aoe-hooks/$AOE_INSTANCE_ID/status 2>/dev/null; exit 0'"
           }
-        ],
-        "matcher": "permission_prompt|elicitation_dialog"
+        ]
       }
     ],
     "PreToolUse": [
       {
+        "matcher": "Bash",
         "hooks": [
           {
-            "command": "rtk hook claude",
-            "type": "command"
+            "type": "command",
+            "command": "rtk hook claude"
           }
-        ],
-        "matcher": "Bash"
+        ]
       },
       {
         "hooks": [
           {
-            "command": "sh -c '[ -n \"$AOE_INSTANCE_ID\" ] || exit 0; mkdir -p /tmp/aoe-hooks/$AOE_INSTANCE_ID 2>/dev/null; printf running > /tmp/aoe-hooks/$AOE_INSTANCE_ID/status 2>/dev/null; exit 0'",
-            "type": "command"
+            "type": "command",
+            "command": "sh -c '[ -n \"$AOE_INSTANCE_ID\" ] || exit 0; mkdir -p /tmp/aoe-hooks/$AOE_INSTANCE_ID 2>/dev/null; printf running > /tmp/aoe-hooks/$AOE_INSTANCE_ID/status 2>/dev/null; exit 0'"
           }
         ]
       }
@@ -53,8 +58,8 @@
       {
         "hooks": [
           {
-            "command": "sh -c '[ -n \"$AOE_INSTANCE_ID\" ] || exit 0; mkdir -p /tmp/aoe-hooks/$AOE_INSTANCE_ID 2>/dev/null; printf idle > /tmp/aoe-hooks/$AOE_INSTANCE_ID/status 2>/dev/null; exit 0'",
-            "type": "command"
+            "type": "command",
+            "command": "sh -c '[ -n \"$AOE_INSTANCE_ID\" ] || exit 0; mkdir -p /tmp/aoe-hooks/$AOE_INSTANCE_ID 2>/dev/null; printf idle > /tmp/aoe-hooks/$AOE_INSTANCE_ID/status 2>/dev/null; exit 0'"
           }
         ]
       }
@@ -63,27 +68,24 @@
       {
         "hooks": [
           {
-            "command": "sh -c '[ -n \"$AOE_INSTANCE_ID\" ] || exit 0; mkdir -p /tmp/aoe-hooks/$AOE_INSTANCE_ID 2>/dev/null; printf running > /tmp/aoe-hooks/$AOE_INSTANCE_ID/status 2>/dev/null; exit 0'",
-            "type": "command"
+            "type": "command",
+            "command": "sh -c '[ -n \"$AOE_INSTANCE_ID\" ] || exit 0; mkdir -p /tmp/aoe-hooks/$AOE_INSTANCE_ID 2>/dev/null; printf running > /tmp/aoe-hooks/$AOE_INSTANCE_ID/status 2>/dev/null; exit 0'"
           }
         ]
       }
     ]
   },
-  "permissions": {
-    "allow": [
-      "Bash(curl -s http://localhost:8080*)",
-      "Bash(aoe *)",
-      "mcp__pencil"
-    ],
-    "defaultMode": "auto"
-  },
-  "skipAutoPermissionPrompt": true,
-  "skipDangerousModePermissionPrompt": true,
-  "spinnerTipsEnabled": false,
   "statusLine": {
-    "command": "node ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/hud/omc-hud.mjs",
-    "type": "command"
+    "type": "command",
+    "command": "node ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/hud/omc-hud.mjs"
   },
-  "theme": "dark-ansi"
+  "enabledPlugins": {
+    "gopls-lsp@claude-plugins-official": true
+  },
+  "feedbackSurveyRate": 0,
+  "spinnerTipsEnabled": false,
+  "effortLevel": "medium",
+  "skipDangerousModePermissionPrompt": true,
+  "theme": "dark-ansi",
+  "skipAutoPermissionPrompt": true
 }
