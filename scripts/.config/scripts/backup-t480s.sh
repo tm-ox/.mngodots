@@ -1,9 +1,9 @@
 #!/bin/bash
 
 # Configuration
-REPO="/mnt/nvme/backups/t480s_remote"
-REMOTE_USER="server"
-REMOTE_IP="TAILSCALE_HOST"
+REPO="/mnt/nvme/backups/remote"
+REMOTE_USER="${BACKUP_REMOTE_USER:?set BACKUP_REMOTE_USER}"
+REMOTE_IP="${BACKUP_REMOTE_IP:?set BACKUP_REMOTE_IP}"
 MOUNT_POINT="$HOME/mnt/t480s_remote"
 PW_FILE="$HOME/.restic_pw"
 EXCLUDES="/home/tm/.mngodots/scripts/.config/scripts/restic-excludes.txt"
