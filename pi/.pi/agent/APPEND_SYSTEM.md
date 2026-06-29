@@ -1,7 +1,6 @@
 ## Environment
-- Machine: workstation, Arch Linux (rolling), zsh
-- CPU: CPU_MODEL — RAM: RAM_SIZE
-- Services: containerized, Tailscale network (TAILSCALE_SUBNET)
+- OS: Arch Linux (rolling), zsh
+- Services: containerized, Tailscale network
 - Editors: Zed, Vim
 
 ## Output

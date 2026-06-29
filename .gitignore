@@ -3,3 +3,4 @@ node_modules/
 *.db
 *.db-shm
 *.db-wal
+pi/.pi/agent/pi-hermes-memory/USER.md

@@ -33,28 +33,7 @@
   "git_panel": {
     "dock": "left",
   },
-  "ssh_connections": [
-    {
-      "host": "LOCAL_HOST",
-      "username": "server",
-      "args": [],
-      "projects": [
-        {
-          "paths": ["/home/server"],
-        },
-      ],
-    },
-    {
-      "host": "TAILSCALE_HOST",
-      "username": "server",
-      "args": [],
-      "projects": [
-        {
-          "paths": ["/home/server"],
-        },
-      ],
-    },
-  ],
+  "ssh_connections": [],
   "agent_servers": {
     "hermes-agent": {
       "type": "custom",
