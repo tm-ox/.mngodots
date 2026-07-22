@@ -9,7 +9,7 @@
 {
   "diff_view_style": "unified",
   "edit_predictions": {
-    "mode": "subtle"
+    "mode": "subtle",
   },
   "tabs": {
     "file_icons": false,
@@ -109,7 +109,7 @@
     "show": "never",
   },
   "tab_bar": {
-    "show": false
+    "show": false,
   },
   "toolbar": {
     "breadcrumbs": true,
@@ -163,6 +163,12 @@
       "format_on_save": "off",
       "language_servers": [],
     },
+    // "Dart": {
+    //   "inlay_hints": {
+    //     "enabled": true,
+    //     "show_other_hints": true,
+    //   },
+    // },
     "CSS": {
       "language_servers": ["tailwindcss-language-server", "..."],
     },

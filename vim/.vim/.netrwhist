@@ -1,5 +1,6 @@
 let g:netrw_dirhistmax  =10
-let g:netrw_dirhistcnt =3
+let g:netrw_dirhistcnt =4
+let g:netrw_dirhist_4='/home/tm/repos/timedart-site'
 let g:netrw_dirhist_3='/home/tm/Documents/wrk/CD/DD-001-UI/logo'
 let g:netrw_dirhist_2='/home/tm/Applications'
 let g:netrw_dirhist_1='/home/tm/Documents/wrk/NTR/NTR-Reels/supplied'

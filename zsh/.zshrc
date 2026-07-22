@@ -54,6 +54,9 @@ alias g.='git add .'
 alias gc='git commit -m'
 alias gp='git push'
 
+alias ffr='printf r > /tmp/tt_flutter_cmd'
+alias ffR='printf R > /tmp/tt_flutter_cmd'
+
 alias .g='gemini --prompt'
 
 alias pacS='sudo pacman -S'
@@ -88,6 +91,8 @@ export TERMINAL="kitty"
 export BAT_THEME="Dracula"
 export TERM=xterm-kitty
 export TERM_PROGRAM=kitty
+
+export PATH="$PATH":"$HOME/.pub-cache/bin"
 
 export ELIXIR_ERL_OPTIONS="-epmd_module Elixir.Livebook.EPMD"
 
@@ -128,3 +133,9 @@ pandoc-typst() {
 # bun
 export BUN_INSTALL="$HOME/.bun"
 export PATH="$BUN_INSTALL/bin:$PATH"
+
+## [Completion]
+## Completion scripts setup. Remove the following line to uninstall
+[[ -f /home/tm/.dart-cli-completion/zsh-config.zsh ]] && . /home/tm/.dart-cli-completion/zsh-config.zsh || true
+## [/Completion]
+
