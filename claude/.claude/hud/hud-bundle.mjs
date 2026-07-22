@@ -382,6 +382,19 @@ function getTotalTokens(stdin) {
   const usage = getCurrentUsage(stdin);
   return (usage?.input_tokens ?? 0) + (usage?.cache_creation_input_tokens ?? 0);
 }
+function getContextTokens(stdin) {
+  const usage = getCurrentUsage(stdin);
+  const summed = (usage?.input_tokens ?? 0) + (usage?.cache_creation_input_tokens ?? 0) + (usage?.cache_read_input_tokens ?? 0);
+  if (summed > 0) {
+    return summed;
+  }
+  const size = stdin.context_window?.context_window_size;
+  const percent = stdin.context_window?.used_percentage;
+  if (size > 0 && typeof percent === "number") {
+    return Math.round(percent / 100 * size);
+  }
+  return 0;
+}
 function getRoundedNativeContextPercent(stdin) {
   const nativePercent = stdin?.context_window?.used_percentage;
   if (typeof nativePercent !== "number" || Number.isNaN(nativePercent)) {
@@ -3949,18 +3962,25 @@ function getStableContextDisplayPercent(percent, thresholds, displayScope) {
   lastDisplayUpdatedAt = now;
   return safePercent;
 }
-function renderContext(percent, thresholds, displayScope) {
+function formatContextTokens(tokens) {
+  if (typeof tokens !== "number" || !isFinite(tokens) || tokens <= 0) {
+    return "";
+  }
+  const display = tokens >= 1000 ? `${(tokens / 1000).toFixed(tokens >= 1e5 ? 0 : 1)}k` : `${tokens}`;
+  return `${DIM3}(${display})${RESET}`;
+}
+function renderContext(percent, thresholds, displayScope, tokens) {
   const safePercent = getStableContextDisplayPercent(percent, thresholds, displayScope);
   const { color, suffix } = getContextDisplayStyle(safePercent, thresholds);
-  return `ctx:${color}${safePercent}%${suffix}${RESET}`;
+  return `ctx:${color}${safePercent}%${suffix}${RESET}${formatContextTokens(tokens)}`;
 }
-function renderContextWithBar(percent, thresholds, barWidth = 10, displayScope) {
+function renderContextWithBar(percent, thresholds, barWidth = 10, displayScope, tokens) {
   const safePercent = getStableContextDisplayPercent(percent, thresholds, displayScope);
   const filled = Math.round(safePercent / 100 * barWidth);
   const empty = barWidth - filled;
   const { color, suffix } = getContextDisplayStyle(safePercent, thresholds);
   const bar = `${color}${"\u2588".repeat(filled)}${DIM3}${"\u2591".repeat(empty)}${RESET}`;
-  return `ctx:[${bar}]${color}${safePercent}%${suffix}${RESET}`;
+  return `ctx:[${bar}]${color}${safePercent}%${suffix}${RESET}${formatContextTokens(tokens)}`;
 }
 
 // dist/hud/elements/background.js
@@ -4955,7 +4975,7 @@ async function render(context, config) {
       rendered.set("lastSkill", lastSkillElement);
   }
   if (enabledElements.contextBar) {
-    const ctx = enabledElements.useBars ? renderContextWithBar(context.contextPercent, config.thresholds, 10, context.contextDisplayScope) : renderContext(context.contextPercent, config.thresholds, context.contextDisplayScope);
+    const ctx = enabledElements.useBars ? renderContextWithBar(context.contextPercent, config.thresholds, 10, context.contextDisplayScope, context.contextTokens) : renderContext(context.contextPercent, config.thresholds, context.contextDisplayScope, context.contextTokens);
     if (ctx)
       rendered.set("contextBar", ctx);
   }
@@ -5535,6 +5555,7 @@ async function main(watchMode = false, skipInit = false) {
     const contextPercent = getContextPercent(stdin);
     const context = {
       contextPercent,
+      contextTokens: getContextTokens(stdin),
       contextDisplayScope: currentSessionId ?? cwd,
       modelName: getModelName(stdin),
       ralph,
