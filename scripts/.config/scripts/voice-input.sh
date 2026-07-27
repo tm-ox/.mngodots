@@ -29,6 +29,9 @@
 #     pactl set-default-source <source-name>
 #   wtype not injecting — verify Wayland display:
 #     echo $WAYLAND_DISPLAY  (should be wayland-0)
+#   Text transcribes but never appears in the target app:
+#     mmsg get focusing-client        # check the appid being detected
+#     VOICE_PASTE=type voice-input.sh # bypass clipboard, type it directly
 #   whisper-cli not found:
 #     yay -S whisper.cpp
 
@@ -48,6 +51,52 @@ close_notification() {
     fi
 }
 
+# Inject transcribed text into the focused window.
+#
+# Paste shortcut is app-dependent: terminals use ctrl+shift+v, GUI apps (Buzz,
+# browsers, editors) use plain ctrl+v. Sending the terminal combo to a GUI app
+# silently does nothing, which is why pasting into Buzz failed.
+#
+# VOICE_PASTE=auto|terminal|normal|type   (default: auto)
+#   type — bypasses the clipboard entirely and types the text. Slower, but
+#          works in apps that ignore synthetic paste.
+inject() {
+    text=$1
+    mode=${VOICE_PASTE:-auto}
+
+    if [ "$mode" = auto ]; then
+        appid=$(mmsg get focusing-client 2>/dev/null \
+            | sed -n 's/.*"appid":"\([^"]*\)".*/\1/p')
+        case "$appid" in
+            kitty|foot|Alacritty|alacritty|xterm|st|URxvt|com.mitchellh.ghostty|org.wezfurlong.wezterm)
+                mode=terminal ;;
+            buzz-desktop)
+                # WebKitGTK ignores the synthetic ctrl+v keystroke even though
+                # manual paste works, so type the text instead.
+                mode=type ;;
+            *)
+                mode=normal ;;
+        esac
+    fi
+
+    if [ "$mode" = type ]; then
+        wtype "$text"
+        return
+    fi
+
+    printf '%s' "$text" | wl-copy
+    sleep 0.3
+    if [ "$mode" = terminal ]; then
+        wtype -M ctrl -M shift -k v -m shift -m ctrl
+    else
+        wtype -M ctrl -k v -m ctrl
+    fi
+    # WebKit/Electron apps read the clipboard asynchronously — clearing too
+    # early races the paste and yields an empty insert.
+    sleep 0.6
+    wl-copy --clear
+}
+
 if [ -f "$LOCK" ]; then
     # Stop recording
     kill -INT "$(cat $LOCK)" 2>/dev/null
@@ -63,11 +112,7 @@ if [ -f "$LOCK" ]; then
     rm -f "$AUDIO"
 
     if [ -n "$TEXT" ]; then
-        printf '%s' "$TEXT" | wl-copy
-        sleep 0.3
-        wtype -M ctrl -M shift -k v -m shift -m ctrl
-        sleep 0.3
-        wl-copy --clear
+        inject "$TEXT"
     fi
 
     close_notification
