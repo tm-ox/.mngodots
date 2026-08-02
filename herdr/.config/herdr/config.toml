@@ -1,0 +1,26 @@
+onboarding = false
+[theme]
+name = "tokyo-night"
+auto_switch = false
+
+[session]
+resume_agents_on_restore = true
+
+[ui]
+sidebar_min_width = 14
+sidebar_max_width = 24
+pane_gaps = false
+hide_tab_bar_when_single_tab = true
+
+[ui.toast]
+delivery = "herdr"
+
+[ui.sound]
+enabled = true
+path = "/home/tm/.mngodots/herdr/.config/herdr/sounds/notification.mp3"
+done_path = "/home/tm/.mngodots/herdr/.config/herdr/sounds/done.mp3"
+request_path = "/home/tm/.mngodots/herdr/.config/herdr/sounds/request.mp3"
+
+[experimental]
+kitty_graphics = true
+pane_history = true
