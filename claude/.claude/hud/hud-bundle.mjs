@@ -5473,6 +5473,7 @@ async function main(watchMode = false, skipInit = false) {
       return;
     }
     const cwd = resolveToWorktreeRoot(stdin.cwd || void 0);
+    const displayCwd = stdin.cwd ? resolve(stdin.cwd) : cwd;
     const config = { ...readHudConfig() };
     if (config.maxWidth === void 0) {
       const cols = process.stderr.columns || process.stdout.columns || parseInt(process.env.COLUMNS ?? "0", 10) || 0;
@@ -5565,7 +5566,7 @@ async function main(watchMode = false, skipInit = false) {
       activeAgents: transcriptData.agents.filter((a) => a.status === "running"),
       todos: transcriptData.todos,
       backgroundTasks: getRunningTasks(hudState),
-      cwd,
+      cwd: displayCwd,
       missionBoard,
       lastSkill: transcriptData.lastActivatedSkill || null,
       rateLimitsResult,
