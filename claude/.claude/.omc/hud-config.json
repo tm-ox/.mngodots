@@ -2,10 +2,12 @@
   "preset": "focused",
   "elements": {
     "omcLabel": false,
-    "useBars": false
+    "useBars": false,
+    "cwd": true,
+    "cwdFormat": "relative"
   },
   "layout": {
-    "line1": ["gitBranch", "gitStatus"],
+    "line1": ["cwd", "gitBranch", "gitStatus"],
     "main": [
       "contextBar",
       "rateLimits",

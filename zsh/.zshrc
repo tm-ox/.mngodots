@@ -44,11 +44,24 @@ alias .p='cd $HOME/projects'
 alias .w='cd $HOME/Documents/web'
 alias .r='cd $HOME/repos'
 alias .c='codium .'
-alias .h='helix'
 alias .rd='ripdrag -W 800 -H 600 -s 48 -r -a $(fzf -m +s)'
 alias .v='vim'
 alias .z='zeditor .'
 alias .a='cd $HOME/Documents/agents/workspace && aoe'
+alias .A='cd $HOME/Documents/agents/workspace'
+.h() {
+  local dir="$HOME/Documents/agents/workspace"
+  local label="agents"
+  local bin="herdr"
+  local wsid
+  wsid=$("$bin" workspace list 2>/dev/null | jq -r --arg l "$label" '.result.workspaces[] | select(.label==$l) | .workspace_id' | head -1)
+  if [ -n "$wsid" ]; then
+    "$bin" workspace focus "$wsid" >/dev/null
+  else
+    "$bin" workspace create --cwd "$dir" --label "$label" --focus >/dev/null
+  fi
+  exec "$bin"
+}
 
 alias g.='git add .'
 alias gc='git commit -m'
@@ -138,4 +151,3 @@ export PATH="$BUN_INSTALL/bin:$PATH"
 ## Completion scripts setup. Remove the following line to uninstall
 [[ -f /home/tm/.dart-cli-completion/zsh-config.zsh ]] && . /home/tm/.dart-cli-completion/zsh-config.zsh || true
 ## [/Completion]
-
