@@ -1,4 +1,10 @@
 onboarding = false
+
+[keys]
+next_tab = ["prefix+n", "ctrl+right"]
+previous_tab = ["prefix+p", "ctrl+left"]
+new_tab = ["prefix+c", "ctrl+t"]
+
 [theme]
 name = "tokyo-night"
 auto_switch = false
