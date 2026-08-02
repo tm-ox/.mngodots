@@ -33,7 +33,19 @@
   "git_panel": {
     "dock": "left",
   },
-  "ssh_connections": [],
+  "ssh_connections": [
+    {
+      "host": "tm-serve",
+      "args": [],
+      "projects": [
+        {
+          "paths": [
+            "/home/tm-serve"
+          ]
+        }
+      ]
+    }
+  ],
   "agent_servers": {
     "hermes-agent": {
       "type": "custom",
