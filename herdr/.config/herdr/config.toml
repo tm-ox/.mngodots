@@ -4,6 +4,7 @@ onboarding = false
 next_tab = ["prefix+n", "ctrl+right"]
 previous_tab = ["prefix+p", "ctrl+left"]
 new_tab = ["prefix+c", "ctrl+t"]
+goto = ["prefix+g", "ctrl+s"]
 
 [theme]
 name = "tokyo-night"

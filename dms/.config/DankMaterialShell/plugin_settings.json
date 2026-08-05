@@ -1,0 +1,21 @@
+{
+  "worldClock": {
+    "enabled": false,
+    "timezones": [
+      {
+        "timezone": "Asia/Jakarta",
+        "label": ":"
+      }
+    ]
+  },
+  "emojiLauncher": {
+    "enabled": true
+  },
+  "calculator": {
+    "enabled": true,
+    "trigger": "="
+  },
+  "grimblast": {
+    "enabled": false
+  }
+}
