@@ -531,6 +531,38 @@
       "matchType": "exact",
       "action": "mute",
       "urgency": "default"
+    },
+    {
+      "enabled": true,
+      "field": "desktopEntry",
+      "pattern": "com.gabm.satty",
+      "matchType": "exact",
+      "action": "mute",
+      "urgency": "default"
+    },
+    {
+      "enabled": true,
+      "field": "desktopEntry",
+      "pattern": "com.gabm.satty",
+      "matchType": "exact",
+      "action": "default",
+      "urgency": "default"
+    },
+    {
+      "enabled": true,
+      "field": "desktopEntry",
+      "pattern": "com.gabm.satty",
+      "matchType": "exact",
+      "action": "default",
+      "urgency": "default"
+    },
+    {
+      "enabled": true,
+      "field": "desktopEntry",
+      "pattern": "com.gabm.satty",
+      "matchType": "exact",
+      "action": "default",
+      "urgency": "default"
     }
   ],
   "notificationFocusedMonitor": false,
