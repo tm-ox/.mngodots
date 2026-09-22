@@ -9,36 +9,6 @@
   },
   "feedbackSurveyRate": 0,
   "hooks": {
-    "ElicitationResult": [
-      {
-        "hooks": [
-          {
-            "command": "sh -c 'unset IFS; set -f; umask 077; [ -n \"$AOE_INSTANCE_ID\" ] || exit 0; case \"$AOE_INSTANCE_ID\" in *[!0-9a-zA-Z_-]*) exit 0 ;; esac; B=/tmp/aoe-hooks-1000; mkdir -p \"$B\" 2>/dev/null || exit 0; LS=$(LC_ALL=C ls -ldn \"$B\" 2>/dev/null) || exit 0; set -- $LS; M=\"$1\"; case \"$M\" in drwx------|drwx------.|drwx------+|drwx------@) ;; *) exit 0 ;; esac; ME=$(id -u 2>/dev/null) || exit 0; [ \"$3\" = \"$ME\" ] || exit 0; D=\"$B/$AOE_INSTANCE_ID\"; mkdir -p \"$D\" 2>/dev/null; LS=$(LC_ALL=C ls -ldn \"$D\" 2>/dev/null) || exit 0; set -- $LS; M=\"$1\"; case \"$M\" in drwx------|drwx------.|drwx------+|drwx------@) ;; *) exit 0 ;; esac; [ \"$3\" = \"$ME\" ] || exit 0; printf running > \"$D/status\" 2>/dev/null; exit 0 # aoe-hooks'",
-            "type": "command"
-          }
-        ]
-      }
-    ],
-    "Notification": [
-      {
-        "hooks": [
-          {
-            "command": "sh -c 'unset IFS; set -f; umask 077; [ -n \"$AOE_INSTANCE_ID\" ] || exit 0; case \"$AOE_INSTANCE_ID\" in *[!0-9a-zA-Z_-]*) exit 0 ;; esac; B=/tmp/aoe-hooks-1000; mkdir -p \"$B\" 2>/dev/null || exit 0; LS=$(LC_ALL=C ls -ldn \"$B\" 2>/dev/null) || exit 0; set -- $LS; M=\"$1\"; case \"$M\" in drwx------|drwx------.|drwx------+|drwx------@) ;; *) exit 0 ;; esac; ME=$(id -u 2>/dev/null) || exit 0; [ \"$3\" = \"$ME\" ] || exit 0; D=\"$B/$AOE_INSTANCE_ID\"; mkdir -p \"$D\" 2>/dev/null; LS=$(LC_ALL=C ls -ldn \"$D\" 2>/dev/null) || exit 0; set -- $LS; M=\"$1\"; case \"$M\" in drwx------|drwx------.|drwx------+|drwx------@) ;; *) exit 0 ;; esac; [ \"$3\" = \"$ME\" ] || exit 0; printf waiting > \"$D/status\" 2>/dev/null; exit 0 # aoe-hooks'",
-            "type": "command"
-          }
-        ],
-        "matcher": "permission_prompt|elicitation_dialog"
-      },
-      {
-        "hooks": [
-          {
-            "command": "sh -c 'unset IFS; set -f; umask 077; [ -n \"$AOE_INSTANCE_ID\" ] || exit 0; case \"$AOE_INSTANCE_ID\" in *[!0-9a-zA-Z_-]*) exit 0 ;; esac; B=/tmp/aoe-hooks-1000; mkdir -p \"$B\" 2>/dev/null || exit 0; LS=$(LC_ALL=C ls -ldn \"$B\" 2>/dev/null) || exit 0; set -- $LS; M=\"$1\"; case \"$M\" in drwx------|drwx------.|drwx------+|drwx------@) ;; *) exit 0 ;; esac; ME=$(id -u 2>/dev/null) || exit 0; [ \"$3\" = \"$ME\" ] || exit 0; D=\"$B/$AOE_INSTANCE_ID\"; mkdir -p \"$D\" 2>/dev/null; LS=$(LC_ALL=C ls -ldn \"$D\" 2>/dev/null) || exit 0; set -- $LS; M=\"$1\"; case \"$M\" in drwx------|drwx------.|drwx------+|drwx------@) ;; *) exit 0 ;; esac; [ \"$3\" = \"$ME\" ] || exit 0; printf idle > \"$D/status\" 2>/dev/null; exit 0 # aoe-hooks'",
-            "type": "command"
-          }
-        ],
-        "matcher": "idle_prompt"
-      }
-    ],
     "PreToolUse": [
       {
         "hooks": [
@@ -48,25 +18,9 @@
           }
         ],
         "matcher": "Bash"
-      },
-      {
-        "hooks": [
-          {
-            "command": "sh -c 'unset IFS; set -f; umask 077; [ -n \"$AOE_INSTANCE_ID\" ] || exit 0; case \"$AOE_INSTANCE_ID\" in *[!0-9a-zA-Z_-]*) exit 0 ;; esac; B=/tmp/aoe-hooks-1000; mkdir -p \"$B\" 2>/dev/null || exit 0; LS=$(LC_ALL=C ls -ldn \"$B\" 2>/dev/null) || exit 0; set -- $LS; M=\"$1\"; case \"$M\" in drwx------|drwx------.|drwx------+|drwx------@) ;; *) exit 0 ;; esac; ME=$(id -u 2>/dev/null) || exit 0; [ \"$3\" = \"$ME\" ] || exit 0; D=\"$B/$AOE_INSTANCE_ID\"; mkdir -p \"$D\" 2>/dev/null; LS=$(LC_ALL=C ls -ldn \"$D\" 2>/dev/null) || exit 0; set -- $LS; M=\"$1\"; case \"$M\" in drwx------|drwx------.|drwx------+|drwx------@) ;; *) exit 0 ;; esac; [ \"$3\" = \"$ME\" ] || exit 0; printf running > \"$D/status\" 2>/dev/null; exit 0 # aoe-hooks'",
-            "type": "command"
-          }
-        ]
       }
     ],
     "SessionStart": [
-      {
-        "hooks": [
-          {
-            "command": "sh -c '[ -n \"$AOE_INSTANCE_ID\" ] || exit 0; command -v aoe >/dev/null 2>&1 || exit 0; aoe __extract-session-id 2>/dev/null; exit 0 # aoe-hooks'",
-            "type": "command"
-          }
-        ]
-      },
       {
         "hooks": [
           {
@@ -77,50 +31,18 @@
         ],
         "matcher": "*"
       }
-    ],
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "command": "sh -c 'unset IFS; set -f; umask 077; [ -n \"$AOE_INSTANCE_ID\" ] || exit 0; case \"$AOE_INSTANCE_ID\" in *[!0-9a-zA-Z_-]*) exit 0 ;; esac; B=/tmp/aoe-hooks-1000; mkdir -p \"$B\" 2>/dev/null || exit 0; LS=$(LC_ALL=C ls -ldn \"$B\" 2>/dev/null) || exit 0; set -- $LS; M=\"$1\"; case \"$M\" in drwx------|drwx------.|drwx------+|drwx------@) ;; *) exit 0 ;; esac; ME=$(id -u 2>/dev/null) || exit 0; [ \"$3\" = \"$ME\" ] || exit 0; D=\"$B/$AOE_INSTANCE_ID\"; mkdir -p \"$D\" 2>/dev/null; LS=$(LC_ALL=C ls -ldn \"$D\" 2>/dev/null) || exit 0; set -- $LS; M=\"$1\"; case \"$M\" in drwx------|drwx------.|drwx------+|drwx------@) ;; *) exit 0 ;; esac; [ \"$3\" = \"$ME\" ] || exit 0; printf idle > \"$D/status\" 2>/dev/null; exit 0 # aoe-hooks'",
-            "type": "command"
-          }
-        ]
-      }
-    ],
-    "StopFailure": [
-      {
-        "hooks": [
-          {
-            "command": "sh -c 'unset IFS; set -f; umask 077; [ -n \"$AOE_INSTANCE_ID\" ] || exit 0; case \"$AOE_INSTANCE_ID\" in *[!0-9a-zA-Z_-]*) exit 0 ;; esac; B=/tmp/aoe-hooks-1000; mkdir -p \"$B\" 2>/dev/null || exit 0; LS=$(LC_ALL=C ls -ldn \"$B\" 2>/dev/null) || exit 0; set -- $LS; M=\"$1\"; case \"$M\" in drwx------|drwx------.|drwx------+|drwx------@) ;; *) exit 0 ;; esac; ME=$(id -u 2>/dev/null) || exit 0; [ \"$3\" = \"$ME\" ] || exit 0; D=\"$B/$AOE_INSTANCE_ID\"; mkdir -p \"$D\" 2>/dev/null; LS=$(LC_ALL=C ls -ldn \"$D\" 2>/dev/null) || exit 0; set -- $LS; M=\"$1\"; case \"$M\" in drwx------|drwx------.|drwx------+|drwx------@) ;; *) exit 0 ;; esac; [ \"$3\" = \"$ME\" ] || exit 0; printf idle > \"$D/status\" 2>/dev/null; exit 0 # aoe-hooks'",
-            "type": "command"
-          }
-        ]
-      }
-    ],
-    "UserPromptSubmit": [
-      {
-        "hooks": [
-          {
-            "command": "sh -c '[ -n \"$AOE_INSTANCE_ID\" ] || exit 0; command -v aoe >/dev/null 2>&1 || exit 0; aoe __extract-session-id 2>/dev/null; exit 0 # aoe-hooks'",
-            "type": "command"
-          },
-          {
-            "command": "sh -c 'unset IFS; set -f; umask 077; [ -n \"$AOE_INSTANCE_ID\" ] || exit 0; case \"$AOE_INSTANCE_ID\" in *[!0-9a-zA-Z_-]*) exit 0 ;; esac; B=/tmp/aoe-hooks-1000; mkdir -p \"$B\" 2>/dev/null || exit 0; LS=$(LC_ALL=C ls -ldn \"$B\" 2>/dev/null) || exit 0; set -- $LS; M=\"$1\"; case \"$M\" in drwx------|drwx------.|drwx------+|drwx------@) ;; *) exit 0 ;; esac; ME=$(id -u 2>/dev/null) || exit 0; [ \"$3\" = \"$ME\" ] || exit 0; D=\"$B/$AOE_INSTANCE_ID\"; mkdir -p \"$D\" 2>/dev/null; LS=$(LC_ALL=C ls -ldn \"$D\" 2>/dev/null) || exit 0; set -- $LS; M=\"$1\"; case \"$M\" in drwx------|drwx------.|drwx------+|drwx------@) ;; *) exit 0 ;; esac; [ \"$3\" = \"$ME\" ] || exit 0; printf running > \"$D/status\" 2>/dev/null; exit 0 # aoe-hooks'",
-            "type": "command"
-          }
-        ]
-      }
     ]
   },
   "model": "sonnet",
   "permissions": {
     "allow": [
       "Bash(curl -s http://localhost:8080*)",
-      "Bash(aoe *)",
       "mcp__pencil",
       "Bash(gh issue create *)",
-      "Bash(gh issue edit *)"
+      "Bash(gh issue edit *)",
+      "Bash(gh pr create *)",
+      "Bash(gh pr ready *)",
+      "Bash(gh pr review *)"
     ],
     "defaultMode": "auto"
   },

@@ -35,6 +35,11 @@ systemctl --user restart xdg-desktop-portal.service &
 # Requires: megacmd (AUR)
 (/usr/lib/systemd/systemd-networkd-wait-online --any -q --timeout=30 && /usr/bin/mega-sync --daemon) &
 
+# Secret Service provider — GNOME/libsecret-based apps (Delta, etc.) need this
+# running to save credentials; nothing provides org.freedesktop.secrets otherwise
+# Requires: gnome-keyring
+export $(gnome-keyring-daemon --start --components=pkcs11,secrets,ssh)
+
 # Monitor layout overrides — uncomment if multi-monitor init order needs forcing
 # mangowc focusmonitor eDP-1
 # mangowc workspace 5

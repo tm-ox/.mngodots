@@ -5,6 +5,14 @@ next_tab = ["prefix+n", "ctrl+right"]
 previous_tab = ["prefix+p", "ctrl+left"]
 new_tab = ["prefix+c", "ctrl+t"]
 goto = ["prefix+g", "ctrl+s"]
+resize_pane_left = "ctrl+alt+h"
+resize_pane_down = "ctrl+alt+j"
+resize_pane_up = "ctrl+alt+k"
+resize_pane_right = "ctrl+alt+l"
+focus_pane_left = "ctrl+h"
+focus_pane_down = "ctrl+j"
+focus_pane_up = "ctrl+k"
+focus_pane_right = "ctrl+l"
 
 [theme]
 name = "tokyo-night"
