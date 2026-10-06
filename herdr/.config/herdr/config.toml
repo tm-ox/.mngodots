@@ -38,4 +38,4 @@ request_path = "/home/tm/.mngodots/herdr/.config/herdr/sounds/request.mp3"
 
 [experimental]
 kitty_graphics = true
-pane_history = true
+pane_history = false
