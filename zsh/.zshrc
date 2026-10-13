@@ -47,8 +47,8 @@ alias .c='codium .'
 alias .rd='ripdrag -W 800 -H 600 -s 48 -r -a $(fzf -m +s)'
 alias .v='vim'
 alias .z='zeditor .'
-alias .a='cd $HOME/Documents/agents/workspace && aoe'
-alias .A='cd $HOME/Documents/agents/workspace'
+# alias .a='cd $HOME/Documents/agents/workspace && aoe'
+alias .a='cd $HOME/Documents/agents/workspace'
 .h() {
   local dir="$HOME/Documents/agents/workspace"
   local label="agents"

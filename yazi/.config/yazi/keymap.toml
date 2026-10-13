@@ -1,4 +1,9 @@
 [[mgr.prepend_keymap]]
+on = [".", "a"]
+run = "cd ~/Documents/agents/workspace"
+desc = "agents workspace"
+
+[[mgr.prepend_keymap]]
 on = [".", "p"]
 run = "cd ~/projects"
 desc = "projects"
