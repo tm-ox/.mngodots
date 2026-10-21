@@ -13,9 +13,9 @@ zed_dir = [{ run = 'zeditor "$@"', orphan = true, desc = "Open directory with Ze
 bitwig = [{ run = 'bitwig-studio "$@"', orphan = true }]
 aff = [{ run = 'Affinity "$@"', orphan = true }]
 extract = [{ run = '7z x "$1" -o"$(dirname "$1")"', block = true, desc = "Extract archive" }]
+office = [{ run = 'libreoffice "$@"', orphan = true, desc = "LibreOffice" }]
 
 [open]
-editor = "edit"
 prepend_rules = [
     { mime = "text/plain", use = [
         "edit",
@@ -46,6 +46,16 @@ prepend_rules = [
     { url = "*.bwproject", use = [
         "bitwig",
     ] },
+    { url = "*.doc", use = ["office"] },
+    { url = "*.docx", use = ["office"] },
+    { url = "*.xls", use = ["office"] },
+    { url = "*.xlsx", use = ["office"] },
+    { url = "*.ppt", use = ["office"] },
+    { url = "*.pptx", use = ["office"] },
+    { url = "*.odt", use = ["office"] },
+    { url = "*.ods", use = ["office"] },
+    { url = "*.odp", use = ["office"] },
+    { url = "*.rtf", use = ["office"] },
     { url = "*.af", use = [
         "aff",
     ] },
