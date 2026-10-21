@@ -5,6 +5,7 @@ next_tab = ["prefix+n", "ctrl+right"]
 previous_tab = ["prefix+p", "ctrl+left"]
 new_tab = ["prefix+c", "ctrl+t"]
 goto = ["prefix+g", "ctrl+s"]
+switch_workspace = "ctrl+1..9"
 resize_pane_left = "ctrl+alt+h"
 resize_pane_down = "ctrl+alt+j"
 resize_pane_up = "ctrl+alt+k"
@@ -13,6 +14,10 @@ focus_pane_left = "ctrl+h"
 focus_pane_down = "ctrl+j"
 focus_pane_up = "ctrl+k"
 focus_pane_right = "ctrl+l"
+swap_pane_left = "ctrl+shift+h"
+swap_pane_down = "ctrl+shift+j"
+swap_pane_up = "ctrl+shift+k"
+swap_pane_right = "ctrl+shift+l"
 
 [theme]
 name = "tokyo-night"
