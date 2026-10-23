@@ -35,8 +35,8 @@ desc = "config"
 
 [[mgr.prepend_keymap]]
 on = [".", "d"]
-run = "cd ~/.hyprdots"
-desc = "hyprdots"
+run = "cd ~/.mngodots"
+desc = "mngodots"
 
 [[mgr.prepend_keymap]]
 on = [".", "z"]

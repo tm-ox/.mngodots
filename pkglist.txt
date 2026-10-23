@@ -132,8 +132,6 @@ sshfs
 starship
 stow
 swaybg
-swayidle
-swaylock
 swaync
 syncthing
 tailscale
