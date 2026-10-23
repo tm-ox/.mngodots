@@ -1,8 +1,8 @@
 ## mngodots
 
-Dotfiles for Arch Linux / MangoWC setup on workstation.
+Dotfiles for Arch Linux / MangoWM setup on workstation.
 
-- **WM**: [mangowc-git](https://mangowc.vercel.app/)
+- **WM**: [mangowm](https://mangowc.vercel.app/) (official repo package `mangowm`, in `pkglist.txt`)
 - **Shell**: [DankMaterialShell (dms)](https://danklinux.com/)
 
 ---
@@ -27,14 +27,14 @@ sudo pacman -S --needed - < pkglist.txt
 yay -S --needed - < pkglist-aur.txt
 ```
 
-Key AUR packages: `mangowc-git` (WM), `dms-shell-git` (shell), `matugen-bin` (theming), `dsearch-bin` (launcher), `wtype` (Wayland keystroke injection), `whisper.cpp` (voice input STT).
+Key AUR packages: `dms-shell-git` (shell), `matugen-bin` (theming), `dsearch-bin` (launcher), `whisper.cpp` (voice input STT).
 
 #### 4. Clone and stow dotfiles
 
 ```bash
 git clone https://github.com/tm-ox/.mngodots.git
 cd .mngodots
-stow --adopt -vSt ~/. '*'
+stow --adopt -vSt ~/. */
 git restore .
 ```
 
@@ -49,10 +49,23 @@ curl -L -o ~/.local/share/whisper.cpp/ggml-small.en.bin \
   "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en.bin"
 ```
 
+**System configs and services** (`/etc` is not stowed; run after packages are installed and dotfiles stowed):
+```bash
+~/.config/etc-dots/install.sh
+```
+Copies `greetd`, `keyd`, `tlp` and the quiet-console sysctl into `/etc` and enables `greetd iwd keyd nftables power-profiles-daemon tlp tailscaled` plus the user services `pipewire wireplumber syncthing`. `docker`, `postgresql` and `warp-svc` are enabled on the current machine but left out of the script. `--remember-session` is set in greetd; Mango is the only installed session. The sysctl keeps kernel warnings off the greeter.
+
 **Default shell**:
 ```bash
 chsh -s /bin/zsh
 ```
+
+**Vivaldi settings** (themes, shortcuts, toolbars, profile list; no bookmarks, logins or extensions):
+```bash
+# Vivaldi must be closed; run after stow
+~/.config/vivaldi-dots/vivaldi-dots.py restore
+```
+Profiles are listed in `vivaldi/.config/vivaldi-dots/MANIFEST.md`. Reinstall extensions manually. Before a reinstall, refresh the snapshot with `vivaldi-dots.py backup`.
 
 ---
 
