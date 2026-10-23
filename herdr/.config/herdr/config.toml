@@ -31,6 +31,7 @@ sidebar_min_width = 14
 sidebar_max_width = 24
 pane_gaps = false
 hide_tab_bar_when_single_tab = true
+window_title = "{workspace}"
 
 [ui.toast]
 delivery = "herdr"
