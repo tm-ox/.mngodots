@@ -47,11 +47,10 @@ alias .c='codium .'
 alias .rd='ripdrag -W 800 -H 600 -s 48 -r -a $(fzf -m +s)'
 alias .v='vim'
 alias .z='zeditor .'
-# alias .a='cd $HOME/Documents/agents/workspace && aoe'
-alias .a='cd $HOME/Documents/agents/workspace'
+alias .a='cd $HOME/workspace'
 .h() {
-  local dir="$HOME/Documents/agents/workspace"
-  local label="agents"
+  local dir="$HOME/workspace"
+  local label="tm"
   local bin="herdr"
   local wsid
   wsid=$("$bin" workspace list 2>/dev/null | jq -r --arg l "$label" '.result.workspaces[] | select(.label==$l) | .workspace_id' | head -1)
