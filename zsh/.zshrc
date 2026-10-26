@@ -62,6 +62,11 @@ alias .a='cd $HOME/workspace'
   exec "$bin"
 }
 
+# tuios: restores saved sessions if the daemon is down; no arg = most recent, `.t wrk` = named
+.t() {
+  exec tuios attach "$@"
+}
+
 alias g.='git add .'
 alias gc='git commit -m'
 alias gp='git push'
