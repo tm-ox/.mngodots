@@ -12,6 +12,8 @@ const DANGEROUS_PATTERNS: Array<[RegExp, string]> = [
   [/base64\s+-d.*\|\s*(ba)?sh/, "decode-and-exec"],
   [/python3?\s+-c\s+['"].*exec\s*\(/, "inline python eval"],
   [/git\s+push\s+(--force|-f)\b/, "force push"],
+  [/git\s+push\b/, "git push (ask every time)"],
+  [/gh\s+pr\s+create\b/, "gh pr create (ask every time)"],
   [/systemctl\s+(disable|mask|stop)\s/, "service disruption"],
   [/sudo\s+/, "sudo"],
 ];

@@ -1,14 +1,6 @@
-## Environment
-- OS: Arch Linux (rolling), zsh
-- Services: containerized, Tailscale network
-- Editors: Zed, Vim
-
-## Output
-- Terse. No filler.
-- Prefer existing tools and patterns before introducing new ones.
-
 ## Subagent Delegation
 Delegate automatically — do not do the work inline when a subagent fits.
+(Identity and global rules live in `AGENTS.md`, loaded natively by Pi.)
 
 | Task | Agent |
 |---|---|

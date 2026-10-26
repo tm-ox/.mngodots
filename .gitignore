@@ -4,3 +4,15 @@ node_modules/
 *.db-shm
 *.db-wal
 pi/.pi/agent/pi-hermes-memory/USER.md
+.omc/
+.env
+.env.*
+*.pem
+*.key
+id_rsa*
+id_ed25519*
+**/auth.json
+**/models-store.json
+**/*credentials*.json
+pi/.pi/agent/sessions/
+pi/.pi/agent/pi-hermes-memory/

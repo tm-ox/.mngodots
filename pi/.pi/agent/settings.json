@@ -1,12 +1,22 @@
 {
-  "lastChangelogVersion": "0.78.1",
+  "lastChangelogVersion": "1.4.0",
   "defaultProvider": "deepseek",
-  "defaultModel": "deepseek-v4-flash",
+  "defaultModel": "deepseek-flash",
   "defaultThinkingLevel": "off",
   "theme": "tm-dk",
   "collapseChangelog": true,
   "packages": [
-    "npm:pi-hermes-memory",
-    "npm:pi-subagents"
-  ]
+    "npm:pi-subagents",
+    "npm:pi-web-search"
+  ],
+  "modelThinkingLevels": {
+    "deepseek/deepseek-flash": "low",
+    "deepseek/deepseek-v4-pro": "medium"
+  },
+  "enabledModels": [
+    "deepseek/deepseek-flash",
+    "deepseek/deepseek-v4-pro"
+  ],
+  "enableInstallTelemetry": false,
+  "tuiMode": "regular"
 }

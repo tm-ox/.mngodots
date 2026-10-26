@@ -1,13 +1,15 @@
 ---
+name: context-builder
 description: Compress and summarize context for handoff to other agents
 tools: read, bash, grep, find, ls, write
-extensions: false
-skills: false
-model: deepseek/deepseek-v4-flash
+extensions:
+model: deepseek/deepseek-flash
 thinking: off
-max_turns: 15
-run_in_background: true
+inheritProjectContext: true
+inheritSkills: false
 output: context.md
+async: true
+timeoutMs: 900000
 ---
 
 You are a context compression agent. Read the specified files and produce a dense, structured summary another agent can act on without reading the originals.

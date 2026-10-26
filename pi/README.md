@@ -9,7 +9,7 @@
 npm install -g @earendil-works/pi-coding-agent
 
 # Authenticate providers
-pi /login   # xAI and DeepSeek
+# then inside pi: /login (xAI and DeepSeek use API keys; Anthropic OAuth only if policy allows)
 ```
 
 ## Stow
@@ -17,12 +17,13 @@ pi /login   # xAI and DeepSeek
 This directory manages `~/.pi/agent/` via symlinks. Run once on a new machine:
 
 ```bash
+ln -sf ~/.mngodots/pi/.pi/agent/AGENTS.md              ~/.pi/agent/AGENTS.md
 ln -sf ~/.mngodots/pi/.pi/agent/APPEND_SYSTEM.md       ~/.pi/agent/APPEND_SYSTEM.md
 ln -sf ~/.mngodots/pi/.pi/agent/settings.json           ~/.pi/agent/settings.json
 ln -sf ~/.mngodots/pi/.pi/agent/agents                  ~/.pi/agent/agents
 ln -sf ~/.mngodots/pi/.pi/agent/extensions              ~/.pi/agent/extensions
 ln -sf ~/.mngodots/pi/.pi/agent/themes                  ~/.pi/agent/themes
-ln -sf ~/.mngodots/pi/.pi/agent/hermes-memory-config.json ~/.pi/agent/hermes-memory-config.json
+ln -sf ~/.mngodots/pi/.pi/agent/web-search.json         ~/.pi/agent/web-search.json
 ```
 
 Then install extension dependencies:
@@ -31,7 +32,7 @@ Then install extension dependencies:
 cd ~/.mngodots/pi/.pi/agent/extensions && npm install
 ```
 
-> `auth.json` is not stowed — re-authenticate with `pi /login` on each machine.
+> `auth.json` is not stowed — re-authenticate with `/login` inside pi on each machine.
 
 ## Extensions
 
@@ -39,14 +40,15 @@ Located in `extensions/`. Loaded automatically by pi on startup.
 
 | Extension | Purpose |
 |---|---|
-| `vault.ts` | Read/write/search Obsidian vault at `~/Documents/vault` |
-| `searxng.ts` | Web search via local SearXNG at `localhost:8080` |
 | `clipboard.ts` | Read/write Wayland clipboard via `wl-paste`/`wl-copy` |
-| `permission-gate.ts` | Block dangerous bash commands with confirm prompt |
+| `permission-gate.ts` | Confirm prompt for dangerous bash commands, including `git push` and `gh pr create` |
 | `session-name.ts` | Auto-name sessions from first prompt |
 | `status.ts` | Session age, elapsed time, turn count in status bar |
 | `header.ts` | Pi logo + version in sidebar header |
-| `claude-task.ts` | Delegate tasks to Claude Code as a subagent |
+| `web-fetch.ts` | `web_fetch` tool: one http(s) page via DeepSeek's Fetch API, cached in `~/.cache/pi-web-fetch` (1 h); returns a short head + outline + file path, not the whole page. Same key; $0.75 per 1,000 after 1 Nov 2026 |
+| `claude-memory.ts` | Bootstrap `CLAUDE.md` + `memory/` in fresh workspace dirs (ports Claude Code's `new-project-init.sh`) |
+| `herdr-agent-state.ts` | Report Pi state to herdr (herdr-managed; no-ops without `HERDR_ENV`) |
+| `tuios-agent-state.ts` | Report Pi state to tuios (tuios-managed; no-ops without `TUIOS_ENV`) |
 
 ## Packages (pi install)
 
@@ -54,8 +56,8 @@ Managed via `settings.json`:
 
 | Package | Purpose |
 |---|---|
-| `npm:pi-hermes-memory` | Persistent user/project memory across sessions |
-| `npm:@tintinweb/pi-subagents` | Spawn isolated subagents with per-agent model and tool config |
+| `npm:pi-subagents` | Spawn isolated subagents with per-agent model and tool config |
+| `npm:pi-web-search` | `web_search` tool via the DeepSeek provider's server-side search (`url_context` is Gemini/Ollama only, so absent on DeepSeek) (same key; model set in `web-search.json`) |
 
 ## Subagents
 
@@ -63,17 +65,22 @@ Agent configs in `agents/`. Loaded globally, can be overridden per-project in `.
 
 | Agent | Model | Tools | Use |
 |---|---|---|---|
-| `scout` | `xai/grok-4-1-fast` | read-only | Fast local recon, file/symbol search |
-| `researcher` | `deepseek/deepseek-v4-flash` | read + search + vault read | Web and vault research |
-| `worker` | `xai/grok-4.20-0309-reasoning` | all + all extensions | Full implementation |
+| `scout` | `deepseek-flash` | read-only | Fast local recon, file/symbol search |
+| `researcher` | `deepseek-flash` | read + `web_search` + `web_fetch` + vault skill | Web and vault research |
+| `oracle` | `deepseek-flash` | read + bash + vault skill | Specific questions from code or vault |
+| `reviewer` | `deepseek-flash` | read-only + bash | Code review |
+| `context-builder` | `deepseek-flash` | read + write | Handoff summaries |
+| `planner` | `deepseek-v4-pro` | read-only + bash | Implementation plans (thinking high) |
+| `delegate` | `deepseek-flash` | all + web search/fetch | General delegated tasks |
+| `worker` | `deepseek-v4-pro` | all + web search/fetch + clipboard | Full implementation |
+
+Agent files use the `pi-subagents` frontmatter dialect (`tools` is a strict allowlist; `extensions:` empty = no ambient extensions; omitted = background children load them; `async`, `timeoutMs`). Extension tools (`web_search`, `clipboard_*`) must be in `tools` and the agent must be background (`async: true`). Model IDs follow the catalog (`pi --list-models deepseek`); they have been renamed before.
 
 Main agent auto-delegates based on task type via rules in `APPEND_SYSTEM.md`.
 
-## Hermes Memory
+## Memory
 
-`hermes-memory-config.json` sets `memoryDir` to point directly at `pi-hermes-memory/` in dotfiles, bypassing symlinks. Hermes uses an atomic write strategy (`rename`) that breaks symlinks — the direct path avoids this.
-
-`USER.md`, `skills/`, and `sessions.db` all land in `pi-hermes-memory/`. The `*.db` files are gitignored.
+No Hermes memory package is installed. Per-project memory follows the Claude Code convention shared with `quad`: a `CLAUDE.md` pointer plus a repo-local `memory/` folder in each workspace directory. Pi's identity and global rules live in `AGENTS.md` (loaded natively from `~/.pi/agent/`, also symlinked as `~/.claude-config/CLAUDE.md` so Claude shares the same source); `APPEND_SYSTEM.md` holds only the subagent delegation table and is appended by Pi. Per-project context comes from `CLAUDE.md`/`AGENTS.md` (ancestor-inherited). `claude-memory.ts` bootstraps `CLAUDE.md` + `memory/` in a fresh workspace folder with no pointer of its own.
 
 ## Theme
 

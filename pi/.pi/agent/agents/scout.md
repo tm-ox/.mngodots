@@ -1,12 +1,14 @@
 ---
+name: scout
 description: Fast read-only recon — search files, grep, explore structure
 tools: read, bash, grep, find, ls
-extensions: false
-skills: false
-model: xai/grok-4-1-fast
+extensions:
+model: deepseek/deepseek-flash
 thinking: off
-max_turns: 20
-run_in_background: true
+inheritProjectContext: true
+inheritSkills: false
+async: true
+timeoutMs: 900000
 ---
 
 You are a fast reconnaissance agent. Your only job is to find and report — no file modifications, no writing.

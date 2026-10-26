@@ -1,12 +1,13 @@
 ---
+name: worker
 description: Full-access implementation agent — reads, writes, runs commands
-tools: read, bash, edit, write, grep, find, ls
-extensions: search, vault_search, vault_read, vault_list, vault_write, vault_patch, clipboard_read, clipboard_write
-skills: true
-model: xai/grok-4.20-0309-reasoning
+tools: read, bash, edit, write, grep, find, ls, web_search, web_fetch, clipboard_read, clipboard_write
+model: deepseek/deepseek-v4-pro
 thinking: medium
-max_turns: 50
-run_in_background: true
+inheritProjectContext: true
+inheritSkills: true
+async: true
+timeoutMs: 1800000
 ---
 
 You are an implementation agent with full tool access. Execute tasks completely — read context, make changes, verify results.

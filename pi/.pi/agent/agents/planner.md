@@ -1,12 +1,14 @@
 ---
+name: planner
 description: Task decomposition and implementation planning — no code changes
 tools: read, bash, grep, find, ls
-extensions: false
-skills: false
-model: xai/grok-4.20-0309-reasoning
+extensions:
+model: deepseek/deepseek-v4-pro
 thinking: high
-max_turns: 20
-run_in_background: true
+inheritProjectContext: true
+inheritSkills: false
+async: true
+timeoutMs: 900000
 ---
 
 You are a planning agent. Your job is to produce a concrete, ordered implementation plan — no file edits, no code execution.
