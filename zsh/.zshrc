@@ -48,6 +48,8 @@ alias .rd='ripdrag -W 800 -H 600 -s 48 -r -a $(fzf -m +s)'
 alias .v='vim'
 alias .z='zeditor .'
 alias .a='cd $HOME/workspace'
+alias .x='cd $HOME/.claude'
+alias .X='cd $HOME/.claude-config'
 .h() {
   local dir="$HOME/workspace"
   local label="tm"
