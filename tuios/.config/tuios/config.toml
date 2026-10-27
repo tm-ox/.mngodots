@@ -121,7 +121,7 @@ tiled = true
 daemon = true
 
 [keybindings]
-leader_key = "ctrl+b"
+leader_key = "ctrl+space"
 
 [appearance]
 theme = "tm"
@@ -170,11 +170,11 @@ swap_right = ["L"]
 
 # fzf file picker over the pane's git repo (or its directory outside one).
 # enter opens the file in $EDITOR (vim) in a new pane; ctrl-p types the path
-# into the pane you came from, or into the newest paste buffer (ctrl+b ]).
+# into the pane you came from, or into the newest paste buffer (leader ]).
 [[keybindings.command]]
 key = "ctrl+/"
 type = "popup"
-command = 'd=${TUIOS_ACTIVE_PANE_CWD:-$HOME/workspace}; r=$(git -C "$d" rev-parse --show-toplevel 2>/dev/null || echo "$d"); case "$r" in "$HOME"|/) r="$HOME/workspace";; esac; out=$(cd "$r" && fd --type f --hidden --exclude .git | fzf --border=none --margin=0 --padding=1,2 --preview-window=right,55%,border-left --expect=ctrl-p --header "enter: edit  ctrl-p: paste path" --preview "bat --color=always --style=plain {}") || exit 0; k=$(printf "%s\\n" "$out" | sed -n 1p); f=$(printf "%s\\n" "$out" | sed -n 2p); [ -n "$f" ] || exit 0; p="$r/$f"; if [ "$k" = ctrl-p ]; then if [ -n "$TUIOS_ACTIVE_PANE_ID" ]; then tuios send-text -w "$TUIOS_ACTIVE_PANE_ID" "$p"; else tuios set-buffer "$p"; fi; else tuios new-window "$(basename "$f")" --cwd "$(dirname "$p")" -- ${EDITOR:-vim} "$p"; fi'
+command = 'd=${TUIOS_ACTIVE_PANE_CWD:-$HOME/workspace}; r=$(git -C "$d" rev-parse --show-toplevel 2>/dev/null || echo "$d"); case "$r" in "$HOME"|/) r="$HOME/workspace";; esac; out=$(cd "$r" && fd --type f --hidden --exclude .git | fzf --border=none --margin=0 --padding=1,2 --preview-window=right,55%,border-left --expect=ctrl-p --header "enter: edit  ctrl-p: paste path" --preview "bat --color=always --style=plain -- {}") || exit 0; k=$(printf "%s\\n" "$out" | sed -n 1p); f=$(printf "%s\\n" "$out" | sed -n 2p); [ -n "$f" ] || exit 0; p="$r/$f"; if [ "$k" = ctrl-p ]; then if [ -n "$TUIOS_ACTIVE_PANE_ID" ]; then tuios send-text -w "$TUIOS_ACTIVE_PANE_ID" "$p"; else tuios set-buffer "$p"; fi; else tuios new-window "$(basename -- "$f")" --cwd "$(dirname "$p")" -- ${EDITOR:-vim} "$p"; fi'
 description = "Find a file in this repo"
 
 [hooks]

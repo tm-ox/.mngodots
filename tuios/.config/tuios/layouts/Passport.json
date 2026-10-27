@@ -1,0 +1,48 @@
+{
+  "name": "Passport",
+  "created_at": "2026-10-27T10:25:09.951968076+07:00",
+  "version": 2,
+  "auto_tiling": true,
+  "tiling_scheme": "spiral",
+  "master_ratio": 0.5,
+  "windows": [
+    {
+      "x": 0,
+      "y": 2,
+      "width": 56,
+      "height": 46,
+      "title": "Terminal 5c106e76",
+      "custom_name": "browser",
+      "working_dir": "/home/tm/workspace/wrk/beyond/passport"
+    },
+    {
+      "x": 0,
+      "y": 48,
+      "width": 104,
+      "height": 5,
+      "title": "Terminal b5a6150c",
+      "custom_name": "server",
+      "working_dir": "/home/tm/repos/beyond-mobile/BeyondMobile"
+    },
+    {
+      "x": 56,
+      "y": 2,
+      "width": 152,
+      "height": 46,
+      "title": "Remote repo sync",
+      "custom_name": "passport",
+      "working_dir": "/home/tm/workspace/wrk/beyond/passport"
+    },
+    {
+      "x": 104,
+      "y": 48,
+      "width": 104,
+      "height": 5,
+      "title": "Terminal 107bec58",
+      "custom_name": "terminal",
+      "working_dir": "/home/tm/repos/beyond-mobile/BeyondMobile"
+    }
+  ],
+  "screen_width": 232,
+  "screen_height": 53
+}
