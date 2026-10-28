@@ -234,35 +234,13 @@
     },
     {
       "enabled": true,
-      "field": "desktopEntry",
-      "pattern": "com.gabm.satty",
+      "field": "appName",
+      "pattern": "Satty",
       "matchType": "exact",
-      "action": "mute",
-      "urgency": "default"
-    },
-    {
-      "enabled": true,
-      "field": "desktopEntry",
-      "pattern": "com.gabm.satty",
-      "matchType": "exact",
-      "action": "default",
-      "urgency": "default"
-    },
-    {
-      "enabled": true,
-      "field": "desktopEntry",
-      "pattern": "com.gabm.satty",
-      "matchType": "exact",
-      "action": "default",
-      "urgency": "default"
-    },
-    {
-      "enabled": true,
-      "field": "desktopEntry",
-      "pattern": "com.gabm.satty",
-      "matchType": "exact",
-      "action": "default",
-      "urgency": "default"
+      "action": "ignore",
+      "urgency": "default",
+      "conditions": [],
+      "bypassDnd": false
     }
   ],
   "osdAlwaysShowValue": true,

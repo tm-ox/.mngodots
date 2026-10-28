@@ -12,7 +12,7 @@ open = [{ run = 'xdg-open "$@"', desc = "Open" }]
 zed_dir = [{ run = 'zeditor "$@"', orphan = true, desc = "Open directory with Zed" }]
 bitwig = [{ run = 'bitwig-studio "$@"', orphan = true }]
 aff = [{ run = 'Affinity "$@"', orphan = true }]
-extract = [{ run = '7z x "$1" -o"$(dirname "$1")"', block = true, desc = "Extract archive" }]
+extract = [{ run = '7z x %s1 -o%d1', block = true, desc = "Extract archive" }]
 office = [{ run = 'libreoffice "$@"', orphan = true, desc = "LibreOffice" }]
 
 [open]

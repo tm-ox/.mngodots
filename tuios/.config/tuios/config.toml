@@ -184,3 +184,6 @@ after-agent-state = ["sh ~/.config/tuios/hooks/sound.sh"]
 row_style = "pill"
 sections = "sessions:25,files:25,agents:34"
 density = "roomy"
+
+[notifications]
+bell = "toast"
