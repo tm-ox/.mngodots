@@ -1,18 +1,11 @@
 ## Subagent Delegation
-Delegate automatically — do not do the work inline when a subagent fits.
+Delegate when it keeps bulky output out of your context or the task is independent of your next step. Otherwise do the work inline: a subagent costs a cold start plus re-reading its result.
 (Identity and global rules live in `AGENTS.md`, loaded natively by Pi.)
 
-| Task | Agent |
-|---|---|
-| Find files, grep symbols, explore structure, git log/diff | `scout` |
-| Web search, docs lookup, vault research | `researcher` |
-| Write/edit code, run commands, multi-step implementation | `worker` |
-| Break a task into ordered steps before implementation | `planner` |
-| Review code for bugs, security issues, regressions | `reviewer` |
-| Compress file context into a handoff summary | `context-builder` |
-| Answer a specific technical question from codebase or docs | `oracle` |
-| General task that doesn't fit a specific role | `delegate` |
-
-- Spawn background (`run_in_background: true`) unless the result is needed before continuing.
-- For tasks with independent subtasks, spawn multiple agents in parallel.
-- Handle simple one-shot reads or responses inline — delegation has overhead.
+- Delegate: web or docs search, wide repo sweeps, long logs, many-file reads, independent subtasks (run them in parallel).
+- Inline: anything under about 3 tool calls, edits to 3 files or fewer, a single known file or lookup.
+- Roles are by cost tier, not by model name. Cheap roles (`scout`, `researcher`, `delegate`, `context-builder`) do retrieval and mechanical work. Stronger roles (`planner`, `worker`) are for multi-file implementation or planning, and when scoping or judging is the task itself.
+- Which model a role runs on is set in `settings.json` under `subagents`. Never name a model or provider in a delegation.
+- Ask each subagent for a bounded digest, not raw output.
+- Async is the default and returns control at once. When you need the result before answering, call with `async: false` so it blocks and returns the digest.
+- `web_fetch` already caps its output, so up to about 3 fetches or searches is fine inline. Delegate when sources, pages or logs are many or large.

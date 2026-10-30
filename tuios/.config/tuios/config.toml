@@ -192,3 +192,11 @@ density = "roomy"
 
 [notifications]
 bell = "toast"
+duration = 5
+warning_duration = 5
+error_sticky = true
+error_duration = 5
+
+[notifications.agent]
+notify = false
+dock = false

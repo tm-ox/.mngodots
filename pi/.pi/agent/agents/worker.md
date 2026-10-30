@@ -2,10 +2,9 @@
 name: worker
 description: Full-access implementation agent — reads, writes, runs commands
 tools: read, bash, edit, write, grep, find, ls, web_search, web_fetch, clipboard_read, clipboard_write
-model: deepseek/deepseek-v4-pro
 thinking: medium
 inheritProjectContext: true
-inheritSkills: true
+inheritSkills: false
 async: true
 timeoutMs: 1800000
 ---

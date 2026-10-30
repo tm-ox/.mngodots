@@ -1,9 +1,9 @@
 ---
 name: context-builder
-description: Compress and summarize context for handoff to other agents
+description: Use to compress many files or long logs into a dense handoff summary before a larger task.
 tools: read, bash, grep, find, ls, write
+advertise: true
 extensions:
-model: deepseek/deepseek-flash
 thinking: off
 inheritProjectContext: true
 inheritSkills: false

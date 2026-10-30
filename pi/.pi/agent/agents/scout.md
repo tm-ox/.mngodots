@@ -1,9 +1,9 @@
 ---
 name: scout
-description: Fast read-only recon — search files, grep, explore structure
+description: Use for wide file or repo recon: grep, find, structure, git log/diff. Read-only; returns paths and line numbers only.
+advertise: true
 tools: read, bash, grep, find, ls
 extensions:
-model: deepseek/deepseek-flash
 thinking: off
 inheritProjectContext: true
 inheritSkills: false

@@ -6,7 +6,11 @@
   "theme": "tm-dk",
   "collapseChangelog": true,
   "packages": [
-    "npm:pi-subagents",
+    {
+      "source": "npm:pi-subagents",
+      "skills": [],
+      "prompts": []
+    },
     "npm:pi-web-search"
   ],
   "modelThinkingLevels": {
@@ -17,6 +21,50 @@
     "deepseek/deepseek-flash",
     "deepseek/deepseek-v4-pro"
   ],
+  "subagents": {
+    "defaultModel": "deepseek/deepseek-flash",
+    "agentOverrides": {
+      "planner": {
+        "model": "deepseek/deepseek-v4-pro"
+      },
+      "worker": {
+        "model": "deepseek/deepseek-v4-pro"
+      }
+    }
+  },
   "enableInstallTelemetry": false,
-  "tuiMode": "regular"
+  "tuiMode": "regular",
+  "skills": [
+    "!caveman",
+    "!design-an-interface",
+    "!diagnose",
+    "!edit-article",
+    "!git-guardrails-claude-code",
+    "!grill-me",
+    "!grill-with-docs",
+    "!handoff",
+    "!improve-codebase-architecture",
+    "!migrate-to-shoehorn",
+    "!obsidian-vault",
+    "!prototype",
+    "!qa",
+    "!request-refactor-plan",
+    "!review",
+    "!scaffold-exercises",
+    "!setup-matt-pocock-skills",
+    "!setup-pre-commit",
+    "!tdd",
+    "!teach",
+    "!to-issues",
+    "!to-prd",
+    "!triage",
+    "!ubiquitous-language",
+    "!write-a-skill",
+    "!writing-beats",
+    "!writing-fragments",
+    "!writing-shape",
+    "!zoom-out"
+  ],
+  "editorPaddingX": 1,
+  "outputPad": 1
 }

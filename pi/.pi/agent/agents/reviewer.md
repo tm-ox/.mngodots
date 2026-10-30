@@ -3,7 +3,6 @@ name: reviewer
 description: Code review — correctness, bugs, security, patterns
 tools: read, bash, grep, find, ls
 extensions:
-model: deepseek/deepseek-flash
 thinking: medium
 inheritProjectContext: true
 inheritSkills: false

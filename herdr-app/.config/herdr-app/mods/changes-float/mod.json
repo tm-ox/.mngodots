@@ -1,0 +1,13 @@
+{
+  "place": "none",
+  "cloned_from": {
+    "name": "changes",
+    "version": "0.1.9"
+  },
+  "title": "Changes",
+  "overlay": {
+    "kind": "dialog",
+    "width": 0.8,
+    "height": 0.85
+  }
+}

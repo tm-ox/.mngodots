@@ -3,7 +3,6 @@ name: oracle
 description: Answer specific technical questions from codebase or docs
 tools: read, bash, grep, find, ls
 extensions:
-model: deepseek/deepseek-flash
 thinking: low
 inheritProjectContext: true
 inheritSkills: false

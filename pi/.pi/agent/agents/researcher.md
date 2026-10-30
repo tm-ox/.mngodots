@@ -1,8 +1,8 @@
 ---
 name: researcher
-description: Web search and vault lookup — research without touching the codebase
+description: Use for web or docs search and vault lookup. Returns a digest under 300 words with source URLs.
+advertise: true
 tools: read, grep, find, ls, web_search, web_fetch
-model: deepseek/deepseek-flash
 thinking: low
 inheritProjectContext: true
 inheritSkills: false

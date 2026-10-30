@@ -1,8 +1,8 @@
 ---
 name: delegate
-description: General-purpose delegated task — inherits full tool access
+description: Use for a bounded side task that does not fit another role, such as a minor edit or a small command. Reports what changed.
+advertise: true
 tools: read, bash, edit, write, grep, find, ls, web_search, web_fetch
-model: deepseek/deepseek-flash
 thinking: low
 inheritProjectContext: true
 inheritSkills: true

@@ -3,7 +3,6 @@ name: planner
 description: Task decomposition and implementation planning — no code changes
 tools: read, bash, grep, find, ls
 extensions:
-model: deepseek/deepseek-v4-pro
 thinking: high
 inheritProjectContext: true
 inheritSkills: false
