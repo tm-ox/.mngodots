@@ -1,23 +1,39 @@
 onboarding = false
 
 [keys]
-next_tab = ["prefix+n", "ctrl+right"]
-previous_tab = ["prefix+p", "ctrl+left"]
-new_tab = ["prefix+c", "ctrl+t"]
+# Mirrors the GUI herdr-app keys (herdr-app/.config/herdr-app/keys.json) where a terminal can send them.
+# Anything with ctrl+shift, alt+digit or ctrl+digit needs a terminal with the kitty keyboard protocol
+# (kitty on the desktop); over Termius use the prefix (ctrl+b) forms, which always work.
+next_tab = ["prefix+n", "ctrl+right", "ctrl+tab", "alt+]"]
+previous_tab = ["prefix+p", "ctrl+left", "ctrl+shift+tab", "alt+["]
+new_tab = ["prefix+c", "ctrl+t", "ctrl+shift+t"]
+close_tab = ["prefix+shift+x", "ctrl+shift+w"]
+rename_tab = ["prefix+shift+t", "f2"]
+rename_workspace = ["prefix+shift+w", "shift+f2"]
+new_workspace = ["prefix+shift+n", "ctrl+shift+n"]
+next_workspace = "ctrl+shift+down"
+previous_workspace = "ctrl+shift+up"
 goto = ["prefix+g", "ctrl+s"]
-switch_workspace = "ctrl+1..9"
+switch_tab = ["prefix+1..9", "ctrl+1..9"]
+switch_workspace = "alt+1..9"
+split_vertical = ["prefix+v", "ctrl+shift+o"]
+split_horizontal = ["prefix+minus", "ctrl+shift+e"]
+close_pane = ["prefix+x", "ctrl+shift+x"]
+zoom = ["prefix+z", "ctrl+shift+z"]
+toggle_sidebar = ["prefix+b", "ctrl+shift+b"]
+settings = ["prefix+s", "ctrl+,"]
 resize_pane_left = "ctrl+alt+h"
 resize_pane_down = "ctrl+alt+j"
 resize_pane_up = "ctrl+alt+k"
 resize_pane_right = "ctrl+alt+l"
-focus_pane_left = "ctrl+h"
-focus_pane_down = "ctrl+j"
-focus_pane_up = "ctrl+k"
-focus_pane_right = "ctrl+l"
-swap_pane_left = "ctrl+shift+h"
-swap_pane_down = "ctrl+shift+j"
-swap_pane_up = "ctrl+shift+k"
-swap_pane_right = "ctrl+shift+l"
+focus_pane_left = ["prefix+h", "alt+h", "alt+left"]
+focus_pane_down = ["prefix+j", "alt+j"]
+focus_pane_up = ["prefix+k", "alt+k"]
+focus_pane_right = ["prefix+l", "alt+l", "alt+right"]
+swap_pane_left = "alt+shift+h"
+swap_pane_down = "alt+shift+j"
+swap_pane_up = "alt+shift+k"
+swap_pane_right = "alt+shift+l"
 
 [theme]
 name = "tokyo-night"

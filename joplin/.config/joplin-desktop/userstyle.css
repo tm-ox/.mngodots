@@ -1,9 +1,12 @@
 /* Style for rendered Markdown */
 
 :root {
-    --tm-dk-bg: #242835;
-    --tm-dk-sf: #24283b;
-    --tm-dk-fg: #929292;
+    /* was --tm-dk-bg: #242835; */
+    --tm-dk-bg: #1e222e;
+    /* was --tm-dk-sf: #24283b; */
+    --tm-dk-sf: #1e222e;
+    /* was --tm-dk-fg: #929292; */
+    --tm-dk-fg: #cccac2;
     --tm-dk-hl: #2d323d;
     --tm-dk-ac: #ff9e64;
     --ctp-macchiato-rosewater: #f4dbd6;
@@ -19,8 +22,10 @@
     --ctp-macchiato-sky: #91d7e3;
     --ctp-macchiato-sapphire: #7dc4e4;
     --ctp-macchiato-blue: #8aadf4;
-    --ctp-macchiato-lavender: #b7bdf8;
-    --ctp-macchiato-text: #cad3f5;
+    /* was --ctp-macchiato-lavender: #b7bdf8; */
+    --ctp-macchiato-lavender: #ff9e64;
+    /* was --ctp-macchiato-text: #cad3f5; */
+    --ctp-macchiato-text: #cccac2;
     --ctp-macchiato-subtext1: #b8c0e0;
     --ctp-macchiato-subtext0: #a5adcb;
     --ctp-macchiato-overlay2: #939ab7;
@@ -29,9 +34,10 @@
     --ctp-macchiato-surface2: #5b6078;
     --ctp-macchiato-surface1: #494d64;
     --ctp-macchiato-surface0: #363a4f;
-    --ctp-macchiato-base: #24273a;
-    --ctp-macchiato-mantle: #1e2030;
-    --ctp-macchiato-crust: #181926;
+    /* was base #24273a, mantle #1e2030, crust #181926 */
+    --ctp-macchiato-base: #1e222e;
+    --ctp-macchiato-mantle: #1a1e29;
+    --ctp-macchiato-crust: #161a23;
 
     --font-face: "Noto Sans", Arial, Helvetica, sans-serif;
     --font-mono: "Roboto Mono", Courier, monospace;

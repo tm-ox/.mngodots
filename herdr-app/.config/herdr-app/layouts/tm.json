@@ -125,7 +125,7 @@
                       },
                       "focus": {
                         "width": 1,
-                        "color": "accent"
+                        "color": "#ff9e64"
                       },
                       "radius": 10,
                       "gap": 8,
@@ -200,7 +200,7 @@
       "background": "canvas",
       "theme": {
         "light": "paper",
-        "dark": "ink"
+        "dark": "tm-dk"
       },
       "terminal_padding": [
         14,

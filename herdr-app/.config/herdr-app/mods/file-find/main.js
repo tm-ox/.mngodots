@@ -12,9 +12,9 @@ import { hc, focused, run, theme, props, closeOverlay } from "herdr";
 
 const EDITOR = ["vim"];
 const MAX_SHOWN = 100;
-const LIST = "/tmp/herdr-ff.list";
-const LIST_SH = 'cd "$1" || exit 1; { fd --type "$2" --hidden --exclude .git; [ "$2" = f ] && fd --type f --hidden --no-ignore --glob ".env*" --exclude .git --exclude node_modules; } | awk \'!s[$0]++\' > "$3"';
-const QUERY_SH = 'if [ -z "$1" ]; then head -n ' + MAX_SHOWN + ' "$2"; else fzf -f "$1" < "$2" | head -n ' + MAX_SHOWN + '; fi';
+const listFile = (base, mode) => `/tmp/herdr-ff-${mode}-${(base ?? ".").replace(/[^A-Za-z0-9]/g, "_")}.list`;
+const LIST_SH = 'cd "$1" || exit 1; { fd --type "$2" --hidden --exclude .git; [ "$2" = f ] && fd --type f --hidden --no-ignore --glob ".env*" --exclude .git --exclude node_modules; } | awk \'!s[$0]++\' > "$3.new" && mv "$3.new" "$3"';
+const QUERY_SH = 'if [ ! -f "$2" ]; then :; elif [ -z "$1" ]; then head -n ' + MAX_SHOWN + ' "$2"; else fzf -f "$1" < "$2" | head -n ' + MAX_SHOWN + '; fi';
 
 export default class FileFind extends View {
   init(_props, cx) {
@@ -48,14 +48,20 @@ export default class FileFind extends View {
 
   async load(cx) {
     const seq = ++this.seq;
+    const list = listFile(this.base(), this.mode);
+    this.list = list;
+    this.listed = false;
     this.rows = [];
     this.status = "Searching…";
+    await this.fill(cx, seq); // last run's list for this folder shows at once, the fresh one replaces it
+    if (seq !== this.seq) return;
     try {
-      await hc(["exec", "sh", "-c", LIST_SH, "sh", this.base() ?? ".", this.mode === "files" ? "f" : "d", LIST]);
+      await hc(["exec", "sh", "-c", LIST_SH, "sh", this.base() ?? ".", this.mode === "files" ? "f" : "d", list]);
     } catch (e) {
       if (seq === this.seq) { this.status = "fd failed: " + String(e); cx.notify(); }
       return;
     }
+    this.listed = true;
     await this.fill(cx, seq);
   }
 
@@ -73,10 +79,10 @@ export default class FileFind extends View {
 
   async fill(cx, seq) {
     try {
-      const r = await hc(["exec", "sh", "-c", QUERY_SH, "sh", this.q, LIST]);
+      const r = await hc(["exec", "sh", "-c", QUERY_SH, "sh", this.q, this.list]);
       if (seq !== this.seq) return;
       this.rows = r.stdout.split("\n").filter(Boolean);
-      this.status = this.rows.length ? "" : "No match.";
+      this.status = this.rows.length ? "" : this.listed ? "No match." : "Searching…";
     } catch (e) {
       if (seq !== this.seq) return;
       this.status = "search failed: " + String(e);

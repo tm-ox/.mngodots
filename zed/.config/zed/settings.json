@@ -96,10 +96,18 @@
   "soft_wrap": "editor_width",
   "experimental.theme_overrides": {
     // https://github.com/ssaunderss/zed-tokyo-night/blob/main/themes/tokyo-night.json
-    "background": "#242835ff",
-    "title_bar.background": "#242835ff",
-    "status_bar.background": "#242835ff",
-    "panel.background": "#242835ff",
+    // was "#242835ff" (v1 before darkening: #181d27ff tried)
+    "background": "#1e222eff",
+    // was "#242835ff" (v1 before darkening: #181d27ff tried)
+    "title_bar.background": "#1e222eff",
+    // was "#242835ff" (v1 before darkening: #181d27ff tried)
+    "status_bar.background": "#1e222eff",
+    // was "#242835ff" (v1 before darkening: #181d27ff tried)
+    "panel.background": "#1e222eff",
+    // was "#242835ff" (v1 before darkening: #181d27ff tried)
+    "terminal.background": "#1e222eff",
+    // was "#242835ff" (v1 before darkening: #181d27ff tried)
+    "editor.background": "#1e222eff",
     "editor.line_number": "#646A83",
     "editor.invisible": "#777777",
     "players": [

@@ -2,9 +2,12 @@
 /* For styling the entire Joplin app (except the rendered Markdown, which is defined in `userstyle.css`) */
 
 :root {
-    --tm-dk-bg: #242835;
-    --tm-dk-sf: #24283b;
-    --tm-dk-fg: #929292;
+    /* was --tm-dk-bg: #242835; */
+    --tm-dk-bg: #1e222e;
+    /* was --tm-dk-sf: #24283b; */
+    --tm-dk-sf: #1e222e;
+    /* was --tm-dk-fg: #929292; */
+    --tm-dk-fg: #cccac2;
     --tm-dk-hl: #2d323d;
     --tm-dk-hv: #2d323d;
     /*--tm-dk-hv: #6e738d;*/
@@ -23,7 +26,8 @@
     --ctp-macchiato-sapphire: #7dc4e4;
     --ctp-macchiato-blue: #8aadf4;
 
-    --ctp-macchiato-text: #929292;
+    /* was --ctp-macchiato-text: #929292; */
+    --ctp-macchiato-text: #cccac2;
     --ctp-macchiato-subtext1: #b8c0e0;
     --ctp-macchiato-subtext0: #a5adcb;
     --ctp-macchiato-overlay2: #939ab7;
@@ -32,9 +36,10 @@
     --ctp-macchiato-surface2: #5b6078;
     --ctp-macchiato-surface1: #494d64;
     --ctp-macchiato-surface0: #363a4f;
-    --ctp-macchiato-base: #24273a;
-    --ctp-macchiato-mantle: #24273a;
-    --ctp-macchiato-crust: #24273a;
+    /* was base/mantle/crust: #24273a */
+    --ctp-macchiato-base: #1e222e;
+    --ctp-macchiato-mantle: #1e222e;
+    --ctp-macchiato-crust: #1e222e;
     --font-face: "Noto Sans", Arial, Helvetica, sans-serif;
     --font-mono: "Roboto Mono", Courier, monospace;
     --font-size: 11px;

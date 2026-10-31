@@ -3,10 +3,12 @@
   "name": "tm-dk",
   "vars": {
     "bgDeep": "#1D202F",
-    "bg": "#242835",
+    "bg": "#1e222e",
+    "bgWas": "#242835",
     "bgMid": "#292e42",
     "bgSelect": "#364A82",
-    "fg": "#929292",
+    "fg": "#cccac2",
+    "fgWas": "#929292",
     "fgBright": "#c0caf5",
     "fgMid": "#a5a9b6",
     "fgDim": "#858DAD",
@@ -81,7 +83,7 @@
   },
   "export": {
     "pageBg": "#1D202F",
-    "cardBg": "#242835",
+    "cardBg": "#1e222e",
     "infoBg": "#252838"
   }
 }

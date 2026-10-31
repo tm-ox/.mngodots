@@ -1,0 +1,5 @@
+tm-dk previous values (JSON allows no comments; unknown keys in the theme file make herdr reject it)
+v1 (kitty tm-dk copy): foreground #929292, cursor #c0caf5, selection #364a82, accent #7aa2f7, working #e0af68, blocked #f7768e, done #9ece6a
+accent history: #7aa2f7 (v1) -> #72cffe (v2, Zed) -> #ff9e64 orange (v3, current; accent_foreground, solid, solid_foreground added)
+bg history: #242835 (kitty/Zed original) -> #181d27 (too dark) -> #1e222e (current)
+foreground history: #929292 -> #cccac2 (current)

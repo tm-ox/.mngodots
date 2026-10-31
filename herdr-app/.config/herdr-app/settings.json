@@ -1,12 +1,13 @@
 {
-  "zoom": 1.0,
+  "zoom": 1,
   "sounds": {
-    "enabled": true,
+    "enabled": false,
     "done": "/home/tm/.mngodots/herdr/.config/herdr/sounds/done.mp3",
     "blocked": "/home/tm/.mngodots/herdr/.config/herdr/sounds/request.mp3"
   },
   "font": "Hack Nerd Font Mono",
-  "font_size": 14.0,
-  "minimum_contrast": 1.0,
-  "appearance": "dark"
+  "font_size": 14,
+  "minimum_contrast": 1,
+  "appearance": "dark",
+  "terminal_opacity": 0.75
 }
