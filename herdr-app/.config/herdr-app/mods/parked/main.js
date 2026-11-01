@@ -1,9 +1,21 @@
 // Parked terminals: running, but without a pane. Up/Down choose, Enter brings it back
-// as a split to the right of the focused pane, P peeks at it, X kills it, Esc closes.
+// as a split to the right of the focused pane, T brings it back as a new tab, P peeks at it, X kills it, Esc closes.
 
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex } from "gpui-base";
 import { terminals, panes, run, theme, props, closeOverlay, openOverlay } from "herdr";
+
+// Dialog look shared with file-find / changes-float / devservers: card, 30px header (title + key-chip hints).
+const keyChip = (text, t) => div().px(6).h(18).min_w(18).flex().items_center().justify_center().flex_none().rounded(5).border_1().border_color(t.input ?? t.border).bg(t.raised).text_size(11).font_medium().text_color(t.muted).child(text);
+const keyHints = (text, t) => h_flex().gap(14).items_center().min_w(0).overflow_hidden().children(text.split(" · ").map((seg) => {
+  const w = seg.split(" "); let n = 1;
+  while (n < w.length && /^[A-Z]$/.test(w[n])) n++;
+  const label = w.slice(n).join(" ");
+  return h_flex().gap(6).items_center().flex_none().child(keyChip(w.slice(0, n).join(" "), t)).when(Boolean(label), (e) => e.child(div().text_size(12).text_color(t.dim).child(label)));
+}));
+const header = (title, hint, t) => h_flex().h(30).flex_none().pr(10).items_center().border_b(1).border_color(t.border)
+  .child(div().h_full().pl(12).pr(6).flex().items_center().flex_none().text_size(12).font_medium().text_color(t.accent).child(title))
+  .child(div().flex_1()).child(keyHints(hint, t));
 
 export default class Parked extends View {
   init(_props, cx) {
@@ -39,6 +51,9 @@ export default class Parked extends View {
         else if (k === "enter" && r) {
           this.close();
           run("terminal.keep", { terminal: r.address, place: "right" });
+        } else if (k === "t" && r) {
+          this.close();
+          run("terminal.keep", { terminal: r.address, place: "tab" });
         } else if ((k === "x" || k === "delete") && r) {
           this.close();
           openOverlay({ mod: "confirm", kind: "dialog", width: 420, props: { title: "Kill " + label(r) + "?", detail: "Ends the terminal and whatever is running in it.", command: { name: "terminal.kill", args: { terminal: r.address } } } });
@@ -51,15 +66,18 @@ export default class Parked extends View {
       })
       .size_full()
       .min_h(0)
-      .p(18)
-      .gap(10)
-      .bg(t.popover)
+      .rounded(10)
+      .overflow_hidden()
+      .border_1()
+      .border_color(t.border)
+      .bg(t.background)
       .text_size(13)
-      .child(h_flex().items_center().child(div().flex_1().text_size(15).font_semibold().text_color(t.foreground).child("Parked terminals")).child(div().text_size(11).text_color(t.dim).child("↑↓ / J K  Enter bring back  P peek  X kill  Esc")))
+      .child(header("Parked terminals", "↑↓ select · Enter split · T tab · P peek · X kill · Esc", t))
       .child(
         v_flex()
           .flex_1()
           .min_h(0)
+          .p(14)
           .gap(2)
           .overflow_y_scrollbar()
           .children(
@@ -67,16 +85,18 @@ export default class Parked extends View {
               ? rows.map((r, i) =>
                   h_flex()
                     .id("pk-" + r.address)
-                    .h(30)
+                    .h(28)
+                    .flex_none()
                     .px(10)
                     .gap(10)
                     .items_center()
                     .rounded(7)
-                    .bg(i === this.at ? t.raised : "#00000000")
-                    .text_color(i === this.at ? t.foreground : t.muted)
-                    .child(div().w(60).text_color(t.dim).child(r.address))
+                    .bg(i === this.at ? t.selected : "#00000000")
+                    .hover((s) => s.bg(t.hover))
+                    .text_color(t.foreground)
+                    .child(div().w(56).flex_none().text_size(12).text_color(t.accent).child(r.address))
                     .child(div().flex_1().min_w(0).truncate().child(label(r)))
-                    .child(div().max_w(240).truncate().text_color(t.dim).child((r.cwd ?? "").replace(/^\/home\/[^/]+/, "~"))),
+                    .child(div().max_w(240).truncate().text_size(11).text_color(t.dim).child((r.cwd ?? "").replace(/^\/home\/[^/]+/, "~"))),
                 )
               : [div().text_color(t.dim).child("Nothing is parked.")],
           ),

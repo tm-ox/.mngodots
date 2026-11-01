@@ -12,6 +12,15 @@ import { View, div } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input, TextView } from "gpui-base";
 import { hc, focused, run, theme, props, closeOverlay, readTextFile, settings } from "herdr";
 
+// Header hints as key chips ("Enter open · Esc" -> [Enter] open [Esc]); same look as the devservers mod.
+const keyChip = (text, t) => div().px(6).h(18).min_w(18).flex().items_center().justify_center().flex_none().rounded(5).border_1().border_color(t.input ?? t.border).bg(t.raised).text_size(11).font_medium().text_color(t.muted).child(text);
+const keyHints = (text, t) => h_flex().gap(14).items_center().min_w(0).overflow_hidden().children(text.split(" · ").map((seg) => {
+  const w = seg.split(" "); let n = 1;
+  while (n < w.length && /^[A-Z]$/.test(w[n])) n++;
+  const label = w.slice(n).join(" ");
+  return h_flex().gap(6).items_center().flex_none().child(keyChip(w.slice(0, n).join(" "), t)).when(Boolean(label), (e) => e.child(div().text_size(12).text_color(t.dim).child(label)));
+}));
+
 const EDITOR = ["vim"];
 const MAX_SHOWN = 100;
 const PV_HALF = 15, PV_PAGE = 30;
@@ -239,7 +248,7 @@ export default class FileFind extends View {
     const off = Math.min(this.pvOff, this.maxOff());
     // Header mirrors the shipped pane header (pane-named): 30px, 12px text, hairline underline; tabs are full-height
     // sections with an accent underline when active. Keep changes-float in sync.
-    const tab = (id, text, key, on, fn) => div().id(id).h_full().pl(12).pr(6).flex().items_center().cursor_pointer().text_size(12).when(on, (e) => e.font_medium().text_color(t.accent)).when(!on, (e) => e.text_color(t.dim).hover((x) => x.text_color(t.muted))).on_click((_e, cx) => fn(cx)).child(h_flex().gap(6).items_center().child(div().px(5).h(16).flex().items_center().rounded(4).border_1().border_color(t.border).bg(t.raised).text_size(10).text_color(t.dim).child(key)).child(text));
+    const tab = (id, text, key, on, fn) => div().id(id).h_full().pl(12).pr(6).flex().items_center().cursor_pointer().text_size(12).when(on, (e) => e.font_medium().text_color(t.accent)).when(!on, (e) => e.text_color(t.dim).hover((x) => x.text_color(t.muted))).on_click((_e, cx) => fn(cx)).child(h_flex().gap(6).items_center().child(keyChip(key, t)).child(text));
     const browsing = this.mode === "dirs" && Boolean(pv.dir);
     const hint = this.pfocus && browsing
       ? "Ctrl+J/K select · Enter open / enter folder · h up · Ctrl+D/U half · gg/G ends · Ctrl+T tab · Ctrl+H back"
@@ -318,9 +327,9 @@ export default class FileFind extends View {
         h_flex().h(30).flex_none().pr(10).items_center().border_b(1).border_color(t.border)
           .child(tab("ff-files", "Files", "Ctrl+F", this.mode === "files", (cx) => this.setMode("files", cx)))
           .child(tab("ff-dirs", "Dirs", "Ctrl+D", this.mode === "dirs", (cx) => this.setMode("dirs", cx)))
-          .child(div().id("ff-scope").h_full().pl(12).pr(6).flex().items_center().cursor_pointer().text_size(12).text_color(t.dim).hover((x) => x.text_color(t.muted)).on_click((_e, cx) => this.toggleScope(cx)).child(h_flex().gap(6).items_center().child(div().px(5).h(16).flex().items_center().rounded(4).border_1().border_color(t.border).bg(t.raised).text_size(10).text_color(t.dim).child("Ctrl+R")).child(this.scope === "repo" ? "Repo" : "Here")))
+          .child(div().id("ff-scope").h_full().pl(12).pr(6).flex().items_center().cursor_pointer().text_size(12).text_color(t.dim).hover((x) => x.text_color(t.muted)).on_click((_e, cx) => this.toggleScope(cx)).child(h_flex().gap(6).items_center().child(keyChip("Ctrl+R", t)).child(this.scope === "repo" ? "Repo" : "Here")))
           .child(div().flex_1().min_w(0).truncate().px(10).text_size(12).text_color(t.dim).child((this.base() ?? "").replace(/^\/home\/[^/]+/, "~")))
-          .child(div().flex_none().text_size(11).text_color(t.dim).child("Enter split · Ctrl+T tab · Esc")),
+          .child(keyHints("Enter split · Ctrl+T tab · Esc", t)),
       )
       .child(
         v_flex().flex_1().min_h(0).p(14).gap(10)
@@ -329,7 +338,7 @@ export default class FileFind extends View {
             h_flex().gap(12).items_center()
               .child(div().w(440).flex_shrink(0).text_size(11).text_color(t.dim).child(`${rows.length}${rows.length >= MAX_SHOWN ? "+" : ""} ${this.mode === "files" ? "files" : "dirs"}`))
               .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(t.muted).child((rows[this.at] ?? "") + (this.mode === "dirs" ? this.dsub : "")))
-              .child(div().flex_none().text_size(11).text_color(t.dim).child(hint)),
+              .child(keyHints(hint, t)),
           )
       .child(
         h_flex().flex_1().min_h(0).gap(12).items_stretch()

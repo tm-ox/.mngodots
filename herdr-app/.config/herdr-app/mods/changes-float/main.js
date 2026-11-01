@@ -1,6 +1,15 @@
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input, Scrollbar, v_virtual_list, TextView } from "gpui-base";
-import { spaces, panes, agents, focused, exec, hc, readTextFile, watchFolder, theme, settings, run, props, closeOverlay, shared, setShared, pickFolder } from "herdr";
+import { spaces, panes, agents, focused, exec, hc, readTextFile, watchFolder, theme, settings, run, props, closeOverlay, shared, setShared, pickFolder, home, notify } from "herdr";
+
+// Header hints as key chips ("Enter open · Esc" -> [Enter] open [Esc]); same look as the devservers mod.
+const keyChip = (text, t) => div().px(6).h(18).min_w(18).flex().items_center().justify_center().flex_none().rounded(5).border_1().border_color(t.input ?? t.border).bg(t.raised).text_size(11).font_medium().text_color(t.muted).child(text);
+const keyHints = (text, t) => h_flex().gap(14).items_center().min_w(0).overflow_hidden().children(text.split(" · ").map((seg) => {
+  const w = seg.split(" "); let n = 1;
+  while (n < w.length && /^[A-Z]$/.test(w[n])) n++;
+  const label = w.slice(n).join(" ");
+  return h_flex().gap(6).items_center().flex_none().child(keyChip(w.slice(0, n).join(" "), t)).when(Boolean(label), (e) => e.child(div().text_size(12).text_color(t.dim).child(label)));
+}));
 
 // Repo pinned to the active tab (else its space): the agents run in ~/workspace while the code lives elsewhere.
 // Stored in shared("git-pins") as { [tabId | "space:"+spaceId]: [repo paths] }; Herdr saves shared state itself.
@@ -30,7 +39,7 @@ const key = () => JSON.stringify(location());
 // Reads write nothing under .git (no index refresh or lock, no fsmonitor cookie):
 // the folder watch would see it, and every refresh would start the next one.
 const READ = ["--no-optional-locks", "-c", "core.fsmonitor=false", "-c", "diff.autoRefreshIndex=false"];
-const TABS = [["dashboard", "Dashboard"], ["changes", "Changes"], ["open", "Open PRs"], ["merged", "Merged"]];
+const TABS = [["dashboard", "Dashboard"], ["changes", "Changes"], ["open", "Open PRs"], ["merged", "Merged"], ["repos", "Repos"]];
 const MERGED_DAYS = 14;
 // Survives closing the window (module scope), so reopening and revisiting a PR show at once and refresh behind.
 const CACHE = { info: {}, details: new Map() };
@@ -76,6 +85,8 @@ export default class Changes extends View {
       if (hadMessage !== Boolean(this.message.trim())) cx.notify();
     });
     this.input.on("submit", (_e, cx) => this.commit(cx));
+    this.repoSt = {}; this.rsel = 0; this.rask = null; this.rbusy = null; this.rnote = null; this.rInput = null;
+    if (!Array.isArray(shared("git-repos"))) setShared("git-repos", [home() + "/.mngodots", home() + "/.claude-config", home() + "/workspace"]);
     this.detail = null;
     this.dInput = InputState.new({ placeholder: "Write your message, Enter to send" });
     this.dInput.on("submit", (_e, cx) => this.runAction(cx));
@@ -89,7 +100,8 @@ export default class Changes extends View {
     if (fc && fc.context === key()) { this.context = fc.context; this.root = fc.root; this.hasHead = fc.hasHead; this.files = fc.files; this.open = null; }
     this.refresh(cx);
     this.loadPrs(cx);
-    cx.timer.every(10000, (cx) => { if (this.on) this.refresh(cx); this.loadPrs(cx); if (this.tab === "dashboard") this.loadInfo(cx); });
+    cx.timer.every(10000, (cx) => { if (this.on) this.refresh(cx); this.loadPrs(cx); if (this.tab === "dashboard") this.loadInfo(cx); if (this.tab === "repos") this.loadRepos(cx); });
+    if (this.tab === "repos") this.loadRepos(cx);
   }
 
   // Open and recently merged PRs of the git repos the active tab's terminals sit in (read only, `gh pr list`).
@@ -148,6 +160,7 @@ export default class Changes extends View {
     if (tab === this.tab) return;
     this.tab = tab; this.sel = 0; this.dsel = -1; this.detail = null;
     this.loadPrs(cx);
+    if (tab === "repos") this.loadRepos(cx, true);
     if (tab === "merged") setShared("merged-seen", Date.now());
     cx.notify();
   }
@@ -294,10 +307,11 @@ export default class Changes extends View {
     return v_flex().id("changes").size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(t.border).text_color(t.foreground).text_size(13).track_focus(this.handle)
       .on_key_down((e, cx) => {
         if (this.detail && this.detailKey(e, cx)) { cx.stop_propagation(); return; }
+        if (this.tab === "repos" && !this.detail && this.reposKey(e, cx)) { cx.stop_propagation(); return; }
         if (e.key === "escape" && this.typing) { this.typing = false; this.handle.focus(); cx.stop_propagation(); cx.notify(); return; }
         if (!this.typing) {
           if (e.key === "p") { this.togglePin(cx); cx.stop_propagation(); return; }
-          const i = ["1", "2", "3", "4"].indexOf(e.key);
+          const i = ["1", "2", "3", "4", "5"].indexOf(e.key);
           if (i >= 0) { this.setTab(TABS[i][0], cx); cx.stop_propagation(); return; }
           if (e.key === "tab") { this.setTab(TABS[(TABS.findIndex(([k]) => k === this.tab) + (e.modifiers.shift ? TABS.length - 1 : 1)) % TABS.length][0], cx); cx.stop_propagation(); return; }
         }
@@ -337,18 +351,171 @@ export default class Changes extends View {
       })
       .child(h_flex().h(30).flex_none().pr(10).items_center().border_b(1).border_color(t.border)
         .children(TABS.map(([k, label], i) => div().id(`gtab-${k}`).h_full().pl(12).pr(6).flex().items_center().cursor_pointer().text_size(12).when(this.tab === k, (e) => e.font_medium().text_color(t.accent)).when(this.tab !== k, (e) => e.text_color(t.dim).hover((x) => x.text_color(t.muted))).on_click((_e, cx) => this.setTab(k, cx))
-          .child(h_flex().gap(6).items_center().child(div().px(5).h(16).flex().items_center().rounded(4).border_1().border_color(t.border).bg(t.raised).text_size(10).text_color(t.dim).child(String(i + 1))).child(k === "changes" ? `${label} ${this.files.length}` : (k === "open" || k === "merged") && this.repos ? `${label} ${this.repos.reduce((n, r) => n + r[k].length, 0)}` : label))))
+          .child(h_flex().gap(6).items_center().child(keyChip(String(i + 1), t)).child(k === "changes" ? `${label} ${this.files.length}` : (k === "open" || k === "merged") && this.repos ? `${label} ${this.repos.reduce((n, r) => n + r[k].length, 0)}` : label))))
         .child(div().flex_1())
-        .when(!this.detail && this.tab === "changes", (e) => e.child(div().px(8).text_size(11).text_color(t.dim).child("↑↓ files · Enter edit in vim · Esc")).child(div().px(4).text_size(11).text_color(t.ansi2).child(`+${add}`)).child(div().px(4).text_size(11).text_color(t.ansi1).child(`−${del}`)))
-        .when(Boolean(this.detail), (e) => e.child(div().px(8).text_size(11).text_color(t.dim).child("Backspace back · D diff · A approve · C comment · X request changes · M merge · B browser")))
-        .when(!this.detail && this.tab === "dashboard", (e) => e.child(div().px(8).text_size(11).text_color(t.dim).child("arrows/J K select · Enter open · R refresh · Esc")))
-        .when(!this.detail && (this.tab === "open" || this.tab === "merged"), (e) => e.child(div().px(8).text_size(11).text_color(t.dim).child("↑↓ select · Enter open PR · R refresh · Esc")))
+        .when(!this.detail && this.tab === "changes", (e) => e.child(keyHints("↑↓ files · Enter edit in vim · Esc", t).px(8)).child(div().px(4).text_size(11).text_color(t.ansi2).child(`+${add}`)).child(div().px(4).text_size(11).text_color(t.ansi1).child(`−${del}`)))
+        .when(Boolean(this.detail), (e) => e.child(keyHints("Backspace back · D diff · A approve · C comment · X request changes · M merge · B browser", t).px(8)))
+        .when(!this.detail && this.tab === "dashboard", (e) => e.child(keyHints("arrows/J K select · Enter open · R refresh · Esc", t).px(8)))
+        .when(!this.detail && (this.tab === "open" || this.tab === "merged"), (e) => e.child(keyHints("↑↓ select · Enter open PR · R refresh · Esc", t).px(8)))
+        .when(!this.detail && this.tab === "repos", (e) => e.child(keyHints(this.rask ? "Enter confirm · Backspace cancel" : "↑↓ select · Enter commit + push · L pull · O open · R refresh · N add · D remove · Esc", t).px(8)))
         .child(div().id("pin").h_full().px(10).flex().items_center().cursor_pointer().text_size(11).text_color(pinOf() ? t.accent : t.dim).hover((x) => x.text_color(pinOf() ? t.accent : t.muted)).on_click((_e, cx) => this.togglePin(cx))
           .child(pinOf() ? `Pinned · ${pinOf()[0].replace(/^\/home\/[^/]+/, "~")}` : "Pin repo (P)")))
       .when(Boolean(this.detail), (e) => e.child(this.detailBody(t)))
       .when(!this.detail && this.tab === "dashboard", (e) => e.child(this.dashBody(t)))
       .when(!this.detail && (this.tab === "open" || this.tab === "merged"), (e) => e.child(this.prBody(t)))
       .when(!this.detail && this.tab === "changes", (e) => e.child(this.changesBody(t, enabled)))
+      .when(!this.detail && this.tab === "repos", (e) => e.child(this.reposBody(t)))
+  }
+
+  // ---- Repos tab: a saved list of repos (shared("git-repos")) with status, commit + push and pull ----
+  repoList() { const v = shared("git-repos"); return Array.isArray(v) ? v : []; }
+
+  repoShell(path, script, ...args) {
+    return exec("sh", ["-c", 'cd "$1" || exit 1; export GIT_TERMINAL_PROMPT=0; [ -f "$HOME/.keychain/$(uname -n)-sh" ] && . "$HOME/.keychain/$(uname -n)-sh"; ' + script, "sh", path, ...args]);
+  }
+
+  // Status per repo (no fetch unless `fetch`): branch, ahead/behind of the local upstream ref, changed files.
+  loadRepos(cx, fetch) {
+    if (this.rloading) return;
+    this.rloading = true;
+    cx.spawn(async (cx) => {
+      try {
+        await Promise.all(this.repoList().map(async (path) => {
+          try {
+            const r = await this.repoShell(path, (fetch ? "git fetch --quiet 2>/dev/null; " : "") + "git --no-optional-locks status -sb --untracked-files=all 2>&1");
+            const lines = r.stdout.split("\n").filter(Boolean);
+            if (r.code !== 0 || !lines.length || !lines[0].startsWith("## ")) { this.repoSt[path] = { err: (lines[0] || r.stderr || "Not a git repository").slice(0, 80) }; return; }
+            const m = lines[0].match(/^## (.*?)(?:\.\.\.(\S+))?(?: \[(.*)\])?$/) || [];
+            this.repoSt[path] = { branch: (m[1] || lines[0].slice(3)).replace(/^No commits yet on /, ""), upstream: m[2] || null, ahead: Number((m[3] || "").match(/ahead (\d+)/)?.[1] || 0), behind: Number((m[3] || "").match(/behind (\d+)/)?.[1] || 0), changed: lines.length - 1 };
+          } catch (e) { this.repoSt[path] = { err: String(e.message ?? e).slice(0, 80) }; }
+        }));
+      } finally { this.rloading = false; cx.notify(); }
+    });
+  }
+
+  today() { const d = new Date(); return `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`; }
+
+  askRepo(kind, path, cx) {
+    const st = this.repoSt[path];
+    if (!st || st.err || this.rbusy) return;
+    this.rnote = null;
+    if (kind === "ship" && !st.changed && !st.ahead) { this.rnote = { ok: true, text: "Nothing to commit or push." }; cx.notify(); return; }
+    if (kind === "pull" && !st.upstream) { this.rnote = { ok: false, text: "No upstream branch to pull from." }; cx.notify(); return; }
+    this.rask = { kind, path };
+    if (kind === "ship" && st.changed) {
+      this.rInput = InputState.new({ value: this.today() });
+      this.rInput.on("submit", (_e, cx) => this.confirmRepo(cx));
+      this.rInput.on("focus", (_e, cx) => { this.typing = true; cx.notify(); });
+      this.rInput.on("blur", (_e, cx) => { this.typing = false; cx.notify(); });
+      cx.timer.after(60, () => this.rInput?.focus());
+    }
+    cx.notify();
+  }
+
+  cancelRepo(cx) { this.rask = null; this.rInput = null; this.typing = false; this.handle.focus(); cx.notify(); }
+
+  confirmRepo(cx) {
+    const ask = this.rask; if (!ask) return;
+    const st = this.repoSt[ask.path], msg = (this.rInput?.value() ?? "").trim();
+    if (ask.kind === "ship" && st?.changed && !msg) return;
+    this.cancelRepo(cx);
+    this.rbusy = ask.path;
+    const tail = (out) => out.trim().split("\n").filter(Boolean).slice(-2).join(" · ") + (/access rights|publickey/i.test(out) ? " (SSH key not in the agent: push once from a terminal, or run ssh-add)" : "");
+    cx.spawn(async (cx) => {
+      try {
+        if (ask.kind === "ship") {
+          if (st?.changed) {
+            const c = await this.repoShell(ask.path, 'git add -A && git commit -m "$2" 2>&1', msg);
+            if (c.code !== 0) throw new Error("Commit failed: " + tail(c.stdout || c.stderr));
+          }
+          const p = await this.repoShell(ask.path, "git push 2>&1");
+          if (p.code !== 0) throw new Error("Push failed: " + tail(p.stdout || p.stderr));
+          this.rnote = { ok: true, text: `${st?.changed ? `Committed "${msg}" and pushed` : "Pushed"} ${ask.path.replace(/^\/home\/[^/]+/, "~")}` };
+        } else {
+          const p = await this.repoShell(ask.path, "git pull --ff-only 2>&1");
+          if (p.code !== 0) throw new Error("Pull failed: " + tail(p.stdout || p.stderr));
+          this.rnote = { ok: true, text: `Pulled ${ask.path.replace(/^\/home\/[^/]+/, "~")}: ${tail(p.stdout)}` };
+        }
+      } catch (e) { this.rnote = { ok: false, text: String(e.message ?? e) }; }
+      finally { this.rbusy = null; this.rloading = false; this.loadRepos(cx); cx.notify(); }
+    });
+    cx.notify();
+  }
+
+  addRepo(cx) {
+    cx.spawn(async (cx) => {
+      try {
+        const dir = await pickFolder({ prompt: "Add a git repo" });
+        if (dir) {
+          const r = await exec("git", ["rev-parse", "--show-toplevel"], { cwd: dir });
+          if (r.code !== 0) notify({ title: "Not a git repository", body: dir, level: "error" });
+          else { const top = r.stdout.trim(); if (!this.repoList().includes(top)) setShared("git-repos", [...this.repoList(), top]); this.loadRepos(cx); }
+        }
+      } catch {}
+      cx.notify();
+    });
+  }
+
+  openRepo(path, cx) { setPin([path]); this.loadPrs(cx, true); this.setTab("changes", cx); }
+
+  reposKey(e, cx) {
+    const k = e.key, list = this.repoList(), path = list[this.rsel];
+    if (this.rask) {
+      if (k === "escape" || (k === "backspace" && !this.typing)) { this.cancelRepo(cx); return true; }
+      if (k === "enter" && !this.typing) { this.confirmRepo(cx); return true; }
+      return false;
+    }
+    if (this.typing) return false;
+    if (k === "down" || k === "j") this.rsel = Math.min(list.length - 1, this.rsel + 1);
+    else if (k === "up" || k === "k") this.rsel = Math.max(0, this.rsel - 1);
+    else if (k === "enter" && path) this.askRepo("ship", path, cx);
+    else if (k === "l" && path) this.askRepo("pull", path, cx);
+    else if (k === "o" && path) this.openRepo(path, cx);
+    else if (k === "r") this.loadRepos(cx, true);
+    else if (k === "n") this.addRepo(cx);
+    else if (k === "d" && path) { setShared("git-repos", list.filter((x) => x !== path)); this.rsel = Math.max(0, Math.min(this.rsel, list.length - 2)); }
+    else return false;
+    cx.notify();
+    return true;
+  }
+
+  reposBody(t) {
+    const list = this.repoList(), tilde = (p) => p.replace(/^\/home\/[^/]+/, "~");
+    this.rsel = Math.max(0, Math.min(this.rsel, list.length - 1));
+    const act = (id, text, fn, color) => div().id(id).px(7).h(22).flex().items_center().flex_none().rounded(6).cursor_pointer().text_size(11).text_color(color ?? t.muted)
+      .hover((s) => s.bg(t.raised)).on_click((_e, cx) => { fn(cx); cx.stop_propagation(); }).child(text);
+    const rows = list.map((path, i) => {
+      const st = this.repoSt[path], busy = this.rbusy === path, sel = i === this.rsel;
+      const ship = st && !st.err ? (st.changed ? "Commit + push" : st.ahead ? "Push" : null) : null;
+      return h_flex().id(`repo-${i}`).h(34).flex_none().px(10).gap(10).items_center().rounded(7).bg(sel ? t.selected : "#00000000").hover((s) => s.bg(sel ? t.selected : t.hover))
+        .on_click((_e, cx) => { this.rsel = i; cx.notify(); })
+        .child(div().w(150).flex_none().truncate().child(path.split("/").pop()))
+        .child(st?.err
+          ? div().flex_1().min_w(0).truncate().text_size(11).text_color(t.ansi1).child(st.err)
+          : h_flex().flex_1().min_w(0).gap(10).items_center().overflow_hidden()
+              .child(div().w(120).flex_none().truncate().text_size(12).text_color(t.accent).child(st ? st.branch : "…"))
+              .child(div().w(80).flex_none().text_size(11).text_color(st?.changed ? t.working : t.dim).child(st ? (st.changed ? `${st.changed} changed` : "clean") : ""))
+              .child(div().w(70).flex_none().text_size(11).text_color(t.working).child(st?.ahead ? `ahead ${st.ahead}` : ""))
+              .child(div().w(80).flex_none().text_size(11).text_color(t.blocked).child(st?.behind ? `behind ${st.behind}` : ""))
+              .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(t.dim).child(tilde(path))))
+        .children(busy ? [div().text_size(11).text_color(t.working).child("Working…")] : [
+          ...(ship ? [act(`ship-${i}`, ship, (cx) => this.askRepo("ship", path, cx), t.accent)] : []),
+          act(`pull-${i}`, "Pull", (cx) => this.askRepo("pull", path, cx)),
+          act(`open-${i}`, "Open", (cx) => this.openRepo(path, cx)),
+          act(`rm-${i}`, "Remove", () => { setShared("git-repos", list.filter((x) => x !== path)); }),
+        ]);
+    });
+    const ask = this.rask, ast = ask && this.repoSt[ask.path];
+    const bar = ask && h_flex().flex_none().gap(10).items_center().p(10).rounded(9).border_1().border_color(t.border).bg(t.raised)
+      .child(div().flex_none().text_color(t.foreground).child(ask.kind === "pull" ? `Pull ${tilde(ask.path)} (fast-forward only)?` : ast?.changed ? `Commit ${ast.changed} changed file${ast.changed === 1 ? "" : "s"} and push ${tilde(ask.path)}, message:` : `Push ${ast?.ahead ?? 0} commit${ast?.ahead === 1 ? "" : "s"} from ${tilde(ask.path)}?`))
+      .when(Boolean(this.rInput) && ask.kind === "ship" && Boolean(ast?.changed), (e) => e.child(Input.new(this.rInput).flex_1().min_w(0).h(32).px(10).rounded(8).border_1().border_color(t.accent).bg(t.background).text_size(12.8).text_color(t.foreground)))
+      .child(div().flex_1())
+      .child(act("repo-yes", "Confirm", (cx) => this.confirmRepo(cx), t.accent))
+      .child(act("repo-no", "Cancel", (cx) => this.cancelRepo(cx)));
+    return v_flex().flex_1().min_h(0).p(14).gap(10)
+      .child(v_flex().flex_1().min_h(0).gap(2).overflow_y_scrollbar().children(rows.length ? rows : [div().px(10).py(8).text_color(t.dim).child("No repos yet. Press N to add one.")]))
+      .when(Boolean(this.rnote), (e) => e.child(div().flex_none().px(10).text_size(12).truncate().text_color(this.rnote.ok ? t.ansi2 : t.ansi1).child(this.rnote.text)))
+      .when(Boolean(bar), (e) => e.child(bar));
   }
 
   // Per repo, slower (`gh`, at most once a minute): default-branch CI, merged local branches, open issues and

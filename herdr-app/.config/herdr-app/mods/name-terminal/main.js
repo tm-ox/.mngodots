@@ -4,6 +4,18 @@ import { View, div } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input } from "gpui-base";
 import { hc, props, closeOverlay, theme } from "herdr";
 
+// Dialog look shared with file-find / changes-float / devservers: card, 30px header (title + key-chip hints).
+const keyChip = (text, t) => div().px(6).h(18).min_w(18).flex().items_center().justify_center().flex_none().rounded(5).border_1().border_color(t.input ?? t.border).bg(t.raised).text_size(11).font_medium().text_color(t.muted).child(text);
+const keyHints = (text, t) => h_flex().gap(14).items_center().min_w(0).overflow_hidden().children(text.split(" · ").map((seg) => {
+  const w = seg.split(" "); let n = 1;
+  while (n < w.length && /^[A-Z]$/.test(w[n])) n++;
+  const label = w.slice(n).join(" ");
+  return h_flex().gap(6).items_center().flex_none().child(keyChip(w.slice(0, n).join(" "), t)).when(Boolean(label), (e) => e.child(div().text_size(12).text_color(t.dim).child(label)));
+}));
+const header = (title, hint, t) => h_flex().h(30).flex_none().pr(10).items_center().border_b(1).border_color(t.border)
+  .child(div().h_full().pl(12).pr(6).flex().items_center().flex_none().text_size(12).font_medium().text_color(t.accent).child(title))
+  .child(div().flex_1()).child(keyHints(hint, t));
+
 export default class NameTerminal extends View {
   init(_props, cx) {
     this.text = props()?.value ?? "";
@@ -26,9 +38,12 @@ export default class NameTerminal extends View {
     const t = theme();
     return v_flex().id("name-terminal").track_focus(this.handle)
       .on_key_down((e, cx) => { if (e.key === "escape") { closeOverlay(props().overlay); cx.stop_propagation(); } })
-      .w_full().min_h(0).p(18).bg(t.popover).text_color(t.foreground)
-      .child(h_flex().items_center().child(div().flex_1().text_size(15).font_semibold().child("Name terminal")).child(div().text_size(11).text_color(t.dim).child("Esc")))
-      .child(div().pt(16).pb(7).text_size(11.5).text_color(t.dim).child("Name"))
-      .child(Input.new(this.input).h(36).px(10).rounded(9).border_1().border_color(t.accent).bg(t.background).text_size(12.8).text_color(t.foreground));
+      .w_full().min_h(0).rounded(10).overflow_hidden().border_1().border_color(t.border).bg(t.background).text_size(13).text_color(t.foreground)
+      .child(header("Name terminal", "Enter save · Esc", t))
+      .child(
+        v_flex().p(14).gap(8)
+          .child(div().text_size(11).text_color(t.dim).child("Name (empty clears it)"))
+          .child(Input.new(this.input).h(36).px(10).rounded(9).border_1().border_color(t.accent).bg(t.raised).text_size(12.8).text_color(t.foreground)),
+      );
   }
 }
