@@ -1,1 +1,1 @@
-{ "place": "none", "title": "Find file", "overlay": { "kind": "popup", "at": "top", "offset": 40, "width": 640, "height": 0.7 } }
+{ "place": "none", "title": "Find file", "overlay": { "kind": "dialog", "width": 0.8, "height": 0.85 } }

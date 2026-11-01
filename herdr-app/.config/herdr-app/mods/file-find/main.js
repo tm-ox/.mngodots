@@ -1,17 +1,33 @@
-// Fuzzy find under the focused terminal's repo (git root, else its folder).
+// Fuzzy find under the focused terminal's repo (git root, else its folder), with a preview pane.
 // Files mode: Enter edits in vim in a split to the right, Ctrl+T in a new tab.
 // Dirs mode: Enter opens a shell there in a split, Ctrl+T in a new tab.
 // Ctrl+F files, Ctrl+D dirs, Ctrl+R repo/here scope, Up/Down or Ctrl+J/K move, Esc closes.
+// Preview: Ctrl+L (or Tab) moves the keyboard to the preview: Ctrl+J/K or j/k scroll, d/u or space page,
+// Ctrl+D/U half page, PgUp/PgDn or Space/Ctrl+F/B page, gg/G ends, Enter opens, Ctrl+T new tab; Ctrl+H (or Tab, i, /) goes back to the search. Ctrl+E toggles rendered/raw markdown (rendered scrolls by wheel only).
 // The script engine has a tight time budget, so listing and fuzzy matching run natively
 // (fd + fzf --filter through `hc exec`); this file only draws the results.
 // .gitignore is respected, except .env* files, which are always included.
 
 import { View, div } from "gpui-kit";
-import { v_flex, h_flex, InputState, Input } from "gpui-base";
-import { hc, focused, run, theme, props, closeOverlay } from "herdr";
+import { v_flex, h_flex, InputState, Input, TextView } from "gpui-base";
+import { hc, focused, run, theme, props, closeOverlay, readTextFile, settings } from "herdr";
 
 const EDITOR = ["vim"];
 const MAX_SHOWN = 100;
+const PV_HALF = 15, PV_PAGE = 30;
+// Rendered markdown can't be measured, so estimate its height from the source (tuned from screenshots: line 23px, ~108 chars
+// per line, table row 36px; 620 = visible pane height) and return the scroll limit in 22px steps.
+const mdLimit = (md) => {
+  let px = 16;
+  for (const l of md.split("\n")) {
+    if (!l.trim()) px += 10;
+    else if (/^#{1,6}\s/.test(l)) px += 40;
+    else if (/^\s*\|/.test(l)) px += /^\s*\|[\s:|-]+$/.test(l) ? 0 : 36;
+    else px += Math.ceil(l.length / 108) * 23;
+  }
+  return Math.max(0, Math.round((px * 1.05 - 620) / 22));
+};
+const PV_LINES = 1000, PV_SHOWN = 90; // lines read / lines drawn from the scroll offset
 const listFile = (base, mode) => `/tmp/herdr-ff-${mode}-${(base ?? ".").replace(/[^A-Za-z0-9]/g, "_")}.list`;
 const LIST_SH = 'cd "$1" || exit 1; { fd --type "$2" --hidden --exclude .git; [ "$2" = f ] && fd --type f --hidden --no-ignore --glob ".env*" --exclude .git --exclude node_modules; } | awk \'!s[$0]++\' > "$3.new" && mv "$3.new" "$3"';
 const QUERY_SH = 'if [ ! -f "$2" ]; then :; elif [ -z "$1" ]; then head -n ' + MAX_SHOWN + ' "$2"; else fzf -f "$1" < "$2" | head -n ' + MAX_SHOWN + '; fi';
@@ -22,16 +38,28 @@ export default class FileFind extends View {
     this.q = "";
     this.at = 0;
     this.seq = 0;
+    this.pvSeq = 0;
     this.mode = "files";
     this.scope = "repo";
     this.status = "Searching…";
+    this.pv = new Map(); // "mode:base/item" -> lines, kept while the window is open
+    this.pvKey = null;
+    this.pvLines = [];
+    this.pvOff = 0; // first preview line shown; the mod scrolls itself (keys + wheel)
+    this.pvVis = 12; // rows kept on screen at the end of a file (fixed: the window-size estimate broke scrolling)
+    this.gPending = false; // first g of gg
+    this.dsub = ""; // dirs mode: folder inside the highlighted dir being browsed in the preview ("a/b/")
+    this.dsel = 0; // dirs mode: selected entry in the preview
+    this.pvItem = null;
+    this.pfocus = false; // keyboard on the preview: j/k scroll
+    this.raw = false;
     this.here = focused()?.cwd ?? null;
     this.root = this.here;
     this.input = InputState.new({ placeholder: "Find…" });
     this.input.on("change", (_e, cx) => { this.q = this.input.value(); this.at = 0; this.query(cx); });
     this.input.on("submit", () => this.open(false));
     this.input.focus();
-    cx.timer.after(600, () => this.input.focus());
+    cx.timer.after(600, () => { if (!this.pfocus) this.input.focus(); });
     this.handle = cx.focus_handle();
     cx.spawn(async (cx) => {
       try {
@@ -83,11 +111,109 @@ export default class FileFind extends View {
       if (seq !== this.seq) return;
       this.rows = r.stdout.split("\n").filter(Boolean);
       this.status = this.rows.length ? "" : this.listed ? "No match." : "Searching…";
+      this.at = Math.max(0, Math.min(this.at, this.rows.length - 1));
+      this.syncPreview(cx);
     } catch (e) {
       if (seq !== this.seq) return;
       this.status = "search failed: " + String(e);
     }
     cx.notify();
+  }
+
+  // Preview of the highlighted row. Files are read natively (no exec); dirs list via `ls`.
+  // Cached per path. Must be started from an event/task context (never from render).
+  syncPreview(cx) {
+    const item = this.rows[this.at];
+    if (item !== this.pvItem) { this.pvItem = item; this.dsub = ""; this.dsel = 0; }
+    const dirPath = item ? `${this.base()}/${item.replace(/\/$/, "")}/${this.dsub}` : null;
+    const key = item ? (this.mode === "dirs" ? `dirs:${dirPath}` : `files:${this.base()}/${item}`) : null;
+    if (key === this.pvKey) return;
+    this.pvKey = key;
+    this.pvOff = 0;
+    if (!key) { this.pvLines = []; return; }
+    const hit = this.pv.get(key);
+    if (hit) { this.pvLines = hit; return; }
+    const seq = ++this.pvSeq;
+    cx.spawn(async (cx) => {
+      let lines;
+      const path = this.mode === "dirs" ? dirPath : `${this.base()}/${item}`;
+      try {
+        if (this.mode === "files") {
+          const text = await readTextFile(path);
+          if (text === null || text === undefined) lines = ["Cannot preview (unreadable or too large)"];
+          else if (text.includes("\0")) lines = ["Binary file"];
+          else {
+            lines = text.slice(0, 200000).replace(/\n$/, "").split("\n").slice(0, PV_LINES).map((l) => (l.length > 3000 ? l.slice(0, 3000) + "…" : l.replace(/\t/g, "  ")));
+            if (lines.length && /\.(md|markdown)$/i.test(item)) { lines.md = text.slice(0, 20000); lines.mdLim = mdLimit(lines.md); }
+          }
+        } else {
+          const r = await hc(["exec", "ls", "-1Ap", "--group-directories-first", path]);
+          lines = r.stdout.split("\n").filter(Boolean).slice(0, PV_LINES);
+          if (lines.length) lines.dir = true; else lines = ["(empty)"];
+        }
+      } catch (e) { lines = ["Cannot preview: " + String(e)]; }
+      if (this.pv.size > 60) this.pv.clear();
+      this.pv.set(key, lines);
+      if (seq === this.pvSeq && key === this.pvKey) { this.pvLines = lines; cx.notify(); }
+    });
+  }
+
+  setMode(mode, cx) {
+    if (mode !== this.mode) { this.mode = mode; this.reload(cx); }
+    cx.notify();
+  }
+
+  toggleScope(cx) {
+    this.scope = this.scope === "repo" ? "here" : "repo";
+    this.reload(cx);
+    cx.notify();
+  }
+
+  // Dirs mode, preview focused: the preview is a browsable folder listing.
+  moveSel(n) {
+    const len = this.pvLines.dir ? this.pvLines.length : 0;
+    if (!len) return;
+    this.dsel = Math.max(0, Math.min(len - 1, this.dsel + n));
+    if (this.dsel < this.pvOff) this.pvOff = this.dsel;
+    else if (this.dsel > this.pvOff + 22) this.pvOff = this.dsel - 22;
+  }
+
+  openEntry(tab, cx) {
+    const entry = this.pvLines.dir ? this.pvLines[this.dsel] : null;
+    const item = this.rows[this.at];
+    if (!entry || !item) return;
+    const rel = item.replace(/\/$/, "") + "/" + this.dsub + entry;
+    const base = this.base();
+    if (entry.endsWith("/")) {
+      if (!tab) { this.dsub += entry; this.dsel = 0; this.syncPreview(cx); return; }
+      const dir = (base ?? "") + "/" + rel.replace(/\/$/, "");
+      closeOverlay(props().overlay);
+      run("terminal.open", { argv: ["sh", "-c", 'cd "$1" && exec "${SHELL:-zsh}" -i', "sh", dir], folder: dir, place: "tab", name: entry.replace(/\/$/, "") });
+      return;
+    }
+    closeOverlay(props().overlay);
+    run("terminal.open", { argv: [...EDITOR, rel], folder: base ?? undefined, place: tab ? "tab" : "right", name: entry });
+  }
+
+  upDir(cx) {
+    if (!this.dsub) return;
+    this.dsub = this.dsub.replace(/[^/]+\/$/, "");
+    this.dsel = 0;
+    this.syncPreview(cx);
+  }
+
+  focusPv(on) {
+    this.pfocus = on;
+    if (on) this.handle.focus(); else this.input.focus();
+  }
+
+  maxOff() {
+    const pv = this.pvLines;
+    return pv.md && !this.raw ? pv.mdLim ?? 0 : Math.max(0, pv.length - this.pvVis);
+  }
+
+  scrollPv(n) {
+    this.pvOff = Math.max(0, Math.min(this.maxOff(), this.pvOff + n));
   }
 
   open(tab) {
@@ -109,7 +235,18 @@ export default class FileFind extends View {
     const t = theme();
     const rows = this.rows;
     this.at = Math.max(0, Math.min(this.at, rows.length - 1));
-    const chip = (text, on) => div().px(8).py(2).rounded(6).text_size(11).bg(on ? t.raised : "#00000000").text_color(on ? t.foreground : t.dim).child(text);
+    const pv = this.pvLines;
+    const off = Math.min(this.pvOff, this.maxOff());
+    // Header mirrors the shipped pane header (pane-named): 30px, 12px text, hairline underline; tabs are full-height
+    // sections with an accent underline when active. Keep changes-float in sync.
+    const tab = (id, text, key, on, fn) => div().id(id).h_full().pl(12).pr(6).flex().items_center().cursor_pointer().text_size(12).when(on, (e) => e.font_medium().text_color(t.accent)).when(!on, (e) => e.text_color(t.dim).hover((x) => x.text_color(t.muted))).on_click((_e, cx) => fn(cx)).child(h_flex().gap(6).items_center().child(div().px(5).h(16).flex().items_center().rounded(4).border_1().border_color(t.border).bg(t.raised).text_size(10).text_color(t.dim).child(key)).child(text));
+    const browsing = this.mode === "dirs" && Boolean(pv.dir);
+    const hint = this.pfocus && browsing
+      ? "Ctrl+J/K select · Enter open / enter folder · h up · Ctrl+D/U half · gg/G ends · Ctrl+T tab · Ctrl+H back"
+      : !this.pfocus && browsing ? "Ctrl+L browse folder · Enter shell here"
+      : this.pfocus
+      ? "Ctrl+J/K line · Ctrl+D/U half · PgDn/PgUp page · gg/G ends · " + (pv.md ? "e raw · " : "") + "Enter open · Ctrl+T tab · Ctrl+H back"
+      : "Ctrl+L focus preview · PgDn/PgUp scroll" + (pv.md ? " · Ctrl+E raw" : "");
     return v_flex()
       .id("file-find")
       .track_focus(this.handle)
@@ -117,8 +254,46 @@ export default class FileFind extends View {
         const k = e.key;
         const ctrl = e.modifiers.control;
         if (k === "escape") return closeOverlay(props().overlay);
+        if (this.pfocus) {
+          const shift = e.modifiers.shift;
+          const g = this.gPending;
+          this.gPending = false;
+          const browse = this.mode === "dirs" && this.pvLines.dir;
+          if (k === "tab" || k === "/" || k === "i" || (ctrl && (k === "h" || k === "l"))) this.focusPv(false);
+          else if (browse && (k === "j" || k === "down" || (ctrl && k === "j"))) this.moveSel(1);
+          else if (browse && (k === "k" || k === "up" || (ctrl && k === "k"))) this.moveSel(-1);
+          else if (browse && (k === "d" || (ctrl && k === "d"))) this.moveSel(PV_HALF);
+          else if (browse && (k === "u" || (ctrl && k === "u"))) this.moveSel(-PV_HALF);
+          else if (browse && (k === "space" || k === " " || k === "pagedown" || (ctrl && k === "f"))) this.moveSel(PV_PAGE);
+          else if (browse && (k === "pageup" || (ctrl && k === "b"))) this.moveSel(-PV_PAGE);
+          else if (browse && k === "g" && !shift) { if (g) { this.dsel = 0; this.pvOff = 0; } else this.gPending = true; }
+          else if (browse && (k === "G" || (k === "g" && shift))) this.moveSel(1e9);
+          else if (browse && (k === "enter" || k === "l")) this.openEntry(false, cx);
+          else if (browse && ctrl && k === "t") this.openEntry(true, cx);
+          else if (browse && (k === "h" || k === "backspace" || k === "-")) this.upDir(cx);
+          else if (k === "j" || k === "down" || (ctrl && k === "j")) this.scrollPv(1);
+          else if (k === "k" || k === "up" || (ctrl && k === "k")) this.scrollPv(-1);
+          else if (k === "d" || (ctrl && k === "d")) this.scrollPv(PV_HALF);
+          else if (k === "u" || (ctrl && k === "u")) this.scrollPv(-PV_HALF);
+          else if (k === "space" || k === " " || k === "pagedown" || (ctrl && k === "f")) this.scrollPv(PV_PAGE);
+          else if (k === "pageup" || (ctrl && k === "b")) this.scrollPv(-PV_PAGE);
+          else if (k === "g" && !shift) { if (g) this.pvOff = 0; else this.gPending = true; }
+          else if (k === "home") this.pvOff = 0;
+          else if (k === "G" || (k === "g" && shift) || k === "end") this.pvOff = 1e9;
+          else if (k === "e") this.raw = !this.raw;
+          else if (k === "enter") this.open(false);
+          else if (ctrl && k === "t") this.open(true);
+          else return;
+          cx.stop_propagation();
+          cx.notify();
+          return;
+        }
         if ((k === "down" || (ctrl && k === "j")) && rows.length) this.at = (this.at + 1) % rows.length;
         else if ((k === "up" || (ctrl && k === "k")) && rows.length) this.at = (this.at + rows.length - 1) % rows.length;
+        else if (k === "tab" || (ctrl && k === "l")) this.focusPv(true);
+        else if (k === "pagedown") this.scrollPv(PV_PAGE);
+        else if (k === "pageup") this.scrollPv(-PV_PAGE);
+        else if (ctrl && k === "e") this.raw = !this.raw;
         else if (ctrl && k === "t") this.open(true);
         else if (ctrl && (k === "d" || k === "f")) {
           const mode = k === "d" ? "dirs" : "files";
@@ -127,47 +302,82 @@ export default class FileFind extends View {
           this.scope = this.scope === "repo" ? "here" : "repo";
           this.reload(cx);
         } else return;
+        this.syncPreview(cx);
         cx.stop_propagation();
         cx.notify();
       })
-      .w_full()
+      .size_full()
       .min_h(0)
-      .p(18)
-      .gap(10)
-      .bg(t.popover)
+      .rounded(10)
+      .overflow_hidden()
+      .border_1()
+      .border_color(t.border)
+      .bg(t.background)
       .text_size(13)
-      .child(h_flex().items_center().child(div().flex_1().text_size(15).font_semibold().text_color(t.foreground).child("Find")).child(div().text_size(11).text_color(t.dim).child("Enter split · Ctrl+T tab · Esc")))
-      .child(Input.new(this.input).h(36).px(10).rounded(9).border_1().border_color(t.accent).bg(t.background).text_size(12.8).text_color(t.foreground))
       .child(
-        h_flex().gap(6).items_center()
-          .child(chip("Files  Ctrl+F", this.mode === "files"))
-          .child(chip("Dirs  Ctrl+D", this.mode === "dirs"))
-          .child(chip((this.scope === "repo" ? "Repo" : "Here") + "  Ctrl+R", true))
-          .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(t.dim).child((this.base() ?? "").replace(/^\/home\/[^/]+/, "~"))),
+        h_flex().h(30).flex_none().pr(10).items_center().border_b(1).border_color(t.border)
+          .child(tab("ff-files", "Files", "Ctrl+F", this.mode === "files", (cx) => this.setMode("files", cx)))
+          .child(tab("ff-dirs", "Dirs", "Ctrl+D", this.mode === "dirs", (cx) => this.setMode("dirs", cx)))
+          .child(div().id("ff-scope").h_full().pl(12).pr(6).flex().items_center().cursor_pointer().text_size(12).text_color(t.dim).hover((x) => x.text_color(t.muted)).on_click((_e, cx) => this.toggleScope(cx)).child(h_flex().gap(6).items_center().child(div().px(5).h(16).flex().items_center().rounded(4).border_1().border_color(t.border).bg(t.raised).text_size(10).text_color(t.dim).child("Ctrl+R")).child(this.scope === "repo" ? "Repo" : "Here")))
+          .child(div().flex_1().min_w(0).truncate().px(10).text_size(12).text_color(t.dim).child((this.base() ?? "").replace(/^\/home\/[^/]+/, "~")))
+          .child(div().flex_none().text_size(11).text_color(t.dim).child("Enter split · Ctrl+T tab · Esc")),
       )
       .child(
-        v_flex()
-          .h(Math.min(360, 8 + Math.max(rows.length, 1) * 27))
-          .min_h(0)
-          .flex_shrink(1)
-          .gap(1)
-          .overflow_y_scrollbar()
-          .children(
-            rows.length
-              ? rows.map((f, i) =>
-                  h_flex()
-                    .id("ff-" + i)
-                    .h(26)
-                    .px(10)
-                    .items_center()
-                    .rounded(7)
-                    .bg(i === this.at ? t.raised : "#00000000")
-                    .text_color(i === this.at ? t.foreground : t.muted)
-                    .child(div().min_w(0).truncate().child(f))
-                    .on_click(() => { this.at = i; this.open(false); }),
-                )
-              : [div().text_color(t.dim).child(this.status || "No match.")],
+        v_flex().flex_1().min_h(0).p(14).gap(10)
+          .child(Input.new(this.input).h(36).px(10).rounded(9).border_1().border_color(t.accent).bg(t.raised).text_size(12.8).text_color(t.foreground))
+          .child(
+            h_flex().gap(12).items_center()
+              .child(div().w(440).flex_shrink(0).text_size(11).text_color(t.dim).child(`${rows.length}${rows.length >= MAX_SHOWN ? "+" : ""} ${this.mode === "files" ? "files" : "dirs"}`))
+              .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(t.muted).child((rows[this.at] ?? "") + (this.mode === "dirs" ? this.dsub : "")))
+              .child(div().flex_none().text_size(11).text_color(t.dim).child(hint)),
+          )
+      .child(
+        h_flex().flex_1().min_h(0).gap(12).items_stretch()
+          .child(
+            v_flex()
+              .w(440)
+              .flex_shrink(0)
+              .h_full()
+              .min_h(0)
+              .gap(1)
+              .overflow_y_scrollbar()
+              .children(
+                rows.length
+                  ? rows.map((f, i) =>
+                      h_flex()
+                        .id("ff-" + i)
+                        .h(26)
+                        .px(10)
+                        .items_center()
+                        .rounded(7)
+                        .bg(i === this.at ? t.selected : "#00000000")
+                        .text_color(i === this.at ? t.foreground : t.muted)
+                        .child(div().min_w(0).truncate().child(f))
+                        .hover((s) => s.bg(t.hover))
+                        .on_click(() => { this.at = i; this.open(false); }),
+                    )
+                  : [div().text_color(t.dim).child(this.status || "No match.")],
+              ),
+          )
+          .child(
+            div().flex_1().min_w(0).min_h(0).h_full().relative().rounded(10).overflow_hidden().border_1().border_color(this.pfocus ? t.accent : t.border).bg(t.raised)
+              .font_family(settings().font_family ?? "JetBrains Mono").text_size(14).text_color(t.foreground)
+              .child(
+                v_flex().size_full().min_h(0)
+                  .child(
+                    (pv.md && !this.raw)
+                      ? div().flex_1().min_h(0).overflow_hidden().relative()
+                          .on_scroll_wheel((e, cx) => { const dy = e.delta_lines?.y ?? e.delta.y; if (dy) { this.scrollPv(dy < 0 ? 3 : -3); cx.notify(); } })
+                          .child(div().absolute().top(-off * 22).left(0).w_full().px(14).py(8).child(TextView.markdown("ff-md-" + this.pvKey, pv.md)))
+                      : pv.length
+                        ? v_flex().flex_1().min_h(0).overflow_hidden().py(6)
+                            .on_scroll_wheel((e, cx) => { const dy = e.delta_lines?.y ?? e.delta.y; if (dy) { this.scrollPv(dy < 0 ? 3 : -3); cx.notify(); } })
+                            .children(pv.slice(off, off + PV_SHOWN).map((l, n) => div().w_full().flex_none().px(10).rounded(4).when(this.pfocus && browsing && off + n === this.dsel, (e) => e.bg(t.selected).text_color(t.accent)).child(l || " ")))
+                        : div().px(10).py(6).text_color(t.dim).child(this.pvKey ? "Loading…" : ""),
+                  ),
+              ),
           ),
-      );
+      )
+    );
   }
 }
