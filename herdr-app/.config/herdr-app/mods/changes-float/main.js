@@ -386,7 +386,7 @@ export default class Changes extends View {
             const lines = r.stdout.split("\n").filter(Boolean);
             if (r.code !== 0 || !lines.length || !lines[0].startsWith("## ")) { this.repoSt[path] = { err: (lines[0] || r.stderr || "Not a git repository").slice(0, 80) }; return; }
             const m = lines[0].match(/^## (.*?)(?:\.\.\.(\S+))?(?: \[(.*)\])?$/) || [];
-            this.repoSt[path] = { branch: (m[1] || lines[0].slice(3)).replace(/^No commits yet on /, ""), upstream: m[2] || null, ahead: Number((m[3] || "").match(/ahead (\d+)/)?.[1] || 0), behind: Number((m[3] || "").match(/behind (\d+)/)?.[1] || 0), changed: lines.length - 1 };
+            this.repoSt[path] = { branch: (m[1] || lines[0].slice(3)).replace(/^No commits yet on /, ""), upstream: m[2] || null, ahead: Number((m[3] || "").match(/ahead (\d+)/)?.[1] || 0), behind: Number((m[3] || "").match(/behind (\d+)/)?.[1] || 0), changed: lines.length - 1, files: lines.slice(1, 41) };
           } catch (e) { this.repoSt[path] = { err: String(e.message ?? e).slice(0, 80) }; }
         }));
       } finally { this.rloading = false; cx.notify(); }
@@ -506,12 +506,18 @@ export default class Changes extends View {
         ]);
     });
     const ask = this.rask, ast = ask && this.repoSt[ask.path];
-    const bar = ask && h_flex().flex_none().gap(10).items_center().p(10).rounded(9).border_1().border_color(t.border).bg(t.raised)
+    const files = ask?.kind === "ship" && ast?.changed ? (ast.files ?? []) : [];
+    const bar = ask && v_flex().flex_none().gap(8).p(10).rounded(9).border_1().border_color(t.border).bg(t.raised)
+      .when(files.length > 0, (e) => e.child(v_flex().gap(1).max_h(150).overflow_y_scrollbar().children([
+        ...files.slice(0, 40).map((l, n) => h_flex().id(`cf-${n}`).gap(8).text_size(11).child(div().w(22).flex_none().text_color(l.startsWith("??") ? t.ansi1 : t.dim).child(l.slice(0, 2).trim() || "·")).child(div().flex_1().min_w(0).truncate().text_color(t.muted).child(l.slice(3)))),
+        ...(ast.changed > files.length ? [div().text_size(11).text_color(t.dim).child(`…and ${ast.changed - files.length} more`)] : []),
+      ])))
+      .child(h_flex().gap(10).items_center()
       .child(div().flex_none().text_color(t.foreground).child(ask.kind === "pull" ? `Pull ${tilde(ask.path)} (fast-forward only)?` : ast?.changed ? `Commit ${ast.changed} changed file${ast.changed === 1 ? "" : "s"} and push ${tilde(ask.path)}, message:` : `Push ${ast?.ahead ?? 0} commit${ast?.ahead === 1 ? "" : "s"} from ${tilde(ask.path)}?`))
       .when(Boolean(this.rInput) && ask.kind === "ship" && Boolean(ast?.changed), (e) => e.child(Input.new(this.rInput).flex_1().min_w(0).h(32).px(10).rounded(8).border_1().border_color(t.accent).bg(t.background).text_size(12.8).text_color(t.foreground)))
       .child(div().flex_1())
       .child(act("repo-yes", "Confirm", (cx) => this.confirmRepo(cx), t.accent))
-      .child(act("repo-no", "Cancel", (cx) => this.cancelRepo(cx)));
+      .child(act("repo-no", "Cancel", (cx) => this.cancelRepo(cx))));
     return v_flex().flex_1().min_h(0).p(14).gap(10)
       .child(v_flex().flex_1().min_h(0).gap(2).overflow_y_scrollbar().children(rows.length ? rows : [div().px(10).py(8).text_color(t.dim).child("No repos yet. Press N to add one.")]))
       .when(Boolean(this.rnote), (e) => e.child(div().flex_none().px(10).text_size(12).truncate().text_color(this.rnote.ok ? t.ansi2 : t.ansi1).child(this.rnote.text)))
@@ -715,7 +721,7 @@ export default class Changes extends View {
         if (this.detail !== det) return;
         if (r.code !== 0) throw new Error((r.stderr || r.stdout || "gh pr view failed").trim().split("\n")[0]);
         det.data = JSON.parse(r.stdout); det.error = null; remember(`${det.top}#${det.n}`, det.data);
-        { const json = JSON.stringify(det.data); if (json.length < 100000) hc(["exec", "sh", "-c", 'mkdir -p /tmp/herdr-gitwin-cache && printf %s "$1" > "$2"', "sh", json, cacheFile(det.top, det.n)]).catch(() => {}); }
+        { const json = JSON.stringify(det.data); if (json.length < 100000) hc(["exec", "sh", "-c", 'umask 077; mkdir -p -m 700 /tmp/herdr-gitwin-cache && chmod 700 /tmp/herdr-gitwin-cache && printf %s "$1" > "$2"', "sh", json, cacheFile(det.top, det.n)]).catch(() => {}); }
       } catch (e) { if (this.detail === det) det.error = String(e); }
       if (this.detail === det) { det.loading = false; cx.notify(); }
     });

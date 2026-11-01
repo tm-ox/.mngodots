@@ -38,7 +38,7 @@ const mdLimit = (md) => {
 };
 const PV_LINES = 1000, PV_SHOWN = 90; // lines read / lines drawn from the scroll offset
 const listFile = (base, mode) => `/tmp/herdr-ff-${mode}-${(base ?? ".").replace(/[^A-Za-z0-9]/g, "_")}.list`;
-const LIST_SH = 'cd "$1" || exit 1; { fd --type "$2" --hidden --exclude .git; [ "$2" = f ] && fd --type f --hidden --no-ignore --glob ".env*" --exclude .git --exclude node_modules; } | awk \'!s[$0]++\' > "$3.new" && mv "$3.new" "$3"';
+const LIST_SH = 'umask 077; cd "$1" || exit 1; { fd --type "$2" --hidden --exclude .git; [ "$2" = f ] && fd --type f --hidden --no-ignore --glob ".env*" --exclude .git --exclude node_modules; } | awk \'!s[$0]++\' > "$3.new" && mv "$3.new" "$3"';
 const QUERY_SH = 'if [ ! -f "$2" ]; then :; elif [ -z "$1" ]; then head -n ' + MAX_SHOWN + ' "$2"; else fzf -f "$1" < "$2" | head -n ' + MAX_SHOWN + '; fi';
 
 export default class FileFind extends View {

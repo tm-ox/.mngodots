@@ -148,7 +148,11 @@ export default class DevServers extends View {
     else notify({ title: b.name + " isn't running", level: "error" });
   }
 
-  async kill(l) { await exec("kill", [String(l.pid)]).catch(() => {}); }
+  // Only signals the pid while it still runs the command the scan saw (pids get reused).
+  async kill(l) {
+    const r = await exec("sh", ["-c", 'c=$(tr "\\0" " " </proc/$1/cmdline 2>/dev/null); [ "${c% }" = "$2" ] && kill "$1"', "sh", String(l.pid), l.cmd]).catch(() => null);
+    if (r && r.code !== 0) notify({ title: "Not stopped", body: `:${l.port} changed since the last scan. Refresh and try again.`, level: "error" });
+  }
 
   async stopBookmark(b, ls) {
     const t = this.terminalFor(b.id);
@@ -171,6 +175,11 @@ export default class DevServers extends View {
   }
 
   restartListener(l, cx) {
+    if (this.askRs !== l.pid) {
+      this.askRs = l.pid;
+      return notify({ title: `Restart :${l.port}?`, body: "This re-runs its command line without the original quoting, which can differ from what you started. Bookmark it for a reliable restart. Press r (or Restart) again to confirm.", level: "warning" });
+    }
+    this.askRs = null;
     const folder = l.cwd || l.root, cmd = l.cmd;
     if (!folder || !cmd) return notify({ title: "Can't restart", body: "No working folder or command for this process", level: "error" });
     cx.spawn(async (cx) => {
