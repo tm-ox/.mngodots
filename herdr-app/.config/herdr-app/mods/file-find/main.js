@@ -10,7 +10,7 @@
 
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input, TextView } from "gpui-base";
-import { hc, focused, run, theme, props, closeOverlay, readTextFile, settings } from "herdr";
+import { hc, focused, run, exec, theme, props, closeOverlay, readTextFile, settings } from "herdr";
 
 // Header hints as key chips ("Enter open · Esc" -> [Enter] open [Esc]); same look as the devservers mod.
 const keyChip = (text, t) => div().px(6).h(18).min_w(18).flex().items_center().justify_center().flex_none().rounded(5).border_1().border_color(t.input ?? t.border).bg(t.raised).text_size(11).font_medium().text_color(t.muted).child(text);
@@ -22,6 +22,11 @@ const keyHints = (text, t) => h_flex().gap(14).items_center().min_w(0).overflow_
 }));
 
 const EDITOR = ["vim"];
+// Files with these extensions open in the default app (xdg-open) on Enter; Ctrl+O flips the choice for one open
+// (external -> vim, anything else -> default app). Add extensions here.
+const EXTERNAL = new Set(["pdf", "docx", "svg", "png", "jpg", "jpeg"]);
+const isExternal = (name, alt) => EXTERNAL.has((name.split(".").pop() || "").toLowerCase()) !== Boolean(alt);
+const openExternal = (abs) => { exec("setsid", ["-f", "xdg-open", abs]).catch(() => {}); };
 const MAX_SHOWN = 100;
 const PV_HALF = 15, PV_PAGE = 30;
 // Rendered markdown can't be measured, so estimate its height from the source (tuned from screenshots: line 23px, ~108 chars
@@ -187,7 +192,7 @@ export default class FileFind extends View {
     else if (this.dsel > this.pvOff + 22) this.pvOff = this.dsel - 22;
   }
 
-  openEntry(tab, cx) {
+  openEntry(tab, cx, alt) {
     const entry = this.pvLines.dir ? this.pvLines[this.dsel] : null;
     const item = this.rows[this.at];
     if (!entry || !item) return;
@@ -201,6 +206,7 @@ export default class FileFind extends View {
       return;
     }
     closeOverlay(props().overlay);
+    if (isExternal(entry, alt)) { openExternal((base ?? "") + "/" + rel); return; }
     run("terminal.open", { argv: [...EDITOR, rel], folder: base ?? undefined, place: tab ? "tab" : "right", name: entry });
   }
 
@@ -225,14 +231,15 @@ export default class FileFind extends View {
     this.pvOff = Math.max(0, Math.min(this.maxOff(), this.pvOff + n));
   }
 
-  open(tab) {
+  open(tab, alt) {
     const item = this.rows[this.at];
     if (!item) return;
     closeOverlay(props().overlay);
     const base = this.base();
     const place = tab ? "tab" : "right";
     const name = item.replace(/\/$/, "").split("/").pop();
-    if (this.mode === "files") run("terminal.open", { argv: [...EDITOR, item], folder: base ?? undefined, place, name });
+    if (this.mode === "files" && isExternal(name, alt)) openExternal((base ?? "") + "/" + item);
+    else if (this.mode === "files") run("terminal.open", { argv: [...EDITOR, item], folder: base ?? undefined, place, name });
     else {
       // folder is ignored for splits (they start where the focused pane is), so cd explicitly
       const dir = (base ?? "") + "/" + item;
@@ -279,6 +286,7 @@ export default class FileFind extends View {
           else if (browse && (k === "G" || (k === "g" && shift))) this.moveSel(1e9);
           else if (browse && (k === "enter" || k === "l")) this.openEntry(false, cx);
           else if (browse && ctrl && k === "t") this.openEntry(true, cx);
+          else if (browse && ((ctrl && k === "o") || k === "o")) this.openEntry(false, cx, true);
           else if (browse && (k === "h" || k === "backspace" || k === "-")) this.upDir(cx);
           else if (k === "j" || k === "down" || (ctrl && k === "j")) this.scrollPv(1);
           else if (k === "k" || k === "up" || (ctrl && k === "k")) this.scrollPv(-1);
@@ -292,6 +300,7 @@ export default class FileFind extends View {
           else if (k === "e") this.raw = !this.raw;
           else if (k === "enter") this.open(false);
           else if (ctrl && k === "t") this.open(true);
+          else if ((ctrl && k === "o") || k === "o") this.open(false, true);
           else return;
           cx.stop_propagation();
           cx.notify();
@@ -304,6 +313,7 @@ export default class FileFind extends View {
         else if (k === "pageup") this.scrollPv(-PV_PAGE);
         else if (ctrl && k === "e") this.raw = !this.raw;
         else if (ctrl && k === "t") this.open(true);
+        else if (ctrl && k === "o") this.open(false, true);
         else if (ctrl && (k === "d" || k === "f")) {
           const mode = k === "d" ? "dirs" : "files";
           if (mode !== this.mode) { this.mode = mode; this.reload(cx); }
@@ -329,7 +339,7 @@ export default class FileFind extends View {
           .child(tab("ff-dirs", "Dirs", "Ctrl+D", this.mode === "dirs", (cx) => this.setMode("dirs", cx)))
           .child(div().id("ff-scope").h_full().pl(12).pr(6).flex().items_center().cursor_pointer().text_size(12).text_color(t.dim).hover((x) => x.text_color(t.muted)).on_click((_e, cx) => this.toggleScope(cx)).child(h_flex().gap(6).items_center().child(keyChip("Ctrl+R", t)).child(this.scope === "repo" ? "Repo" : "Here")))
           .child(div().flex_1().min_w(0).truncate().px(10).text_size(12).text_color(t.dim).child((this.base() ?? "").replace(/^\/home\/[^/]+/, "~")))
-          .child(keyHints("Enter split · Ctrl+T tab · Esc", t)),
+          .child(keyHints("Enter split · Ctrl+T tab · Ctrl+O other app · Esc", t)),
       )
       .child(
         v_flex().flex_1().min_h(0).p(14).gap(10)

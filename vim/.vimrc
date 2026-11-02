@@ -2,10 +2,18 @@
 ""VIMRC""
 """""""""
 
-source ~/.vim/plugins.vim
-
 "SETTINGS {{{
 set nocompatible
+set ttimeout ttimeoutlen=50
+set hidden
+set mouse=a
+set grepprg=rg\ --vimgrep
+let g:netrw_dirhistmax = 0
+"Persistent undo (outside the dotfiles repo)
+let s:undo = expand('~/.local/state/vim/undo')
+if !isdirectory(s:undo) | call mkdir(s:undo, 'p', 0700) | endif
+let &undodir = s:undo
+set undofile
 set termguicolors
 filetype plugin indent on
 syntax on
@@ -37,6 +45,8 @@ set cmdheight=1
 augroup filetype_vim
  autocmd!
 	autocmd FileType vim setlocal foldmethod=marker
+	autocmd FileType go setlocal noexpandtab tabstop=4 shiftwidth=4 softtabstop=0 formatprg=gofmt
+	autocmd FileType html,css,scss,javascript,javascriptreact,typescript,typescriptreact,json,jsonc,astro,yaml setlocal tabstop=2 shiftwidth=2 softtabstop=2
 augroup END
 set incsearch
 set ignorecase
@@ -186,7 +196,7 @@ nnoremap Y y$
 nnoremap j gj
 vnoremap j gj
 nnoremap k gk
-noremap k gk
+vnoremap k gk
 nnoremap <Down> gj
 nnoremap <Up> gk
 noremap <silent> <C-y> :w !wl-copy<CR><CR>
@@ -203,7 +213,6 @@ noremap <C-b> <C-b>zz
 noremap <PageUp> <C-b>zz
 noremap <PageDown> <C-f>zz
 "Move lines / selection
-noremap <A-k> :m '>-2<CR>gv=gv<CR>
 nnoremap <A-j> :m .+1<CR>==
 nnoremap <A-k> :m .-2<CR>==
 inoremap <A-j> <Esc>:m .+1<CR>==gi
@@ -243,7 +252,6 @@ nnoremap <Leader>b :buffers<CR>:b<space>
 "}}}
 
 "Splits {{{
-nnoremap <Leader>r :buffers<CR>:b<space>
 nnoremap <Leader>l :vsplit<CR>
 nnoremap <Leader>j :split<CR>
 nnoremap <C-j> <C-w>j
