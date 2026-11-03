@@ -215,6 +215,13 @@ export default class Agents extends View {
     let list = agents();
     this.listed = new Map(list.map((a) => [a.address, a.status]));
     const all = terminals();
+    // tm-serve's `.a` space is recreated from a fixed id with an automatic name ("sys");
+    // name it sys-srv once, so it isn't confused with the local sys space.
+    for (const s of spaces()) {
+      if (s.machine === "tm-serve" && !s.named && s.id.endsWith("sp9d1a6757a83e31de79841e316de6b53a") && s.name !== "sys-srv") {
+        run("space.rename", { id: s.id, name: "sys-srv" });
+      }
+    }
     const shown = focused()?.agent;
     const now = Date.now();
     this.track(list, now);
