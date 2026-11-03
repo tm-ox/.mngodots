@@ -620,5 +620,7 @@
   ],
   "lockScreenShowWeather": false,
   "lockScreenWallpaperPath": "/home/tm/.config/DankMaterialShell/background.jpg",
-  "lockScreenShowPowerActions": false
+  "lockScreenShowPowerActions": false,
+  "notificationCompactMode": true,
+  "notificationForegroundLayers": true
 }

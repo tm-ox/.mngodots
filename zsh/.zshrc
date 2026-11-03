@@ -2,6 +2,8 @@ eval "$(starship init zsh)"
 
 # SSH agent
 eval $(keychain --eval --quiet ~/.ssh/id_ed25519)
+# stable agent path for GUI-launched tools (herdr) that lack SSH_AUTH_SOCK
+[[ -S $SSH_AUTH_SOCK ]] && ln -sfn "$SSH_AUTH_SOCK" ~/.keychain/agent.sock
 
 # Plugins
 source ~/repos/zsh-autocomplete/zsh-autocomplete.plugin.zsh

@@ -68,7 +68,7 @@ inject() {
         appid=$(mmsg get focusing-client 2>/dev/null \
             | sed -n 's/.*"appid":"\([^"]*\)".*/\1/p')
         case "$appid" in
-            kitty|foot|Alacritty|alacritty|xterm|st|URxvt|com.mitchellh.ghostty|org.wezfurlong.wezterm)
+            kitty|foot|Alacritty|alacritty|xterm|st|URxvt|com.mitchellh.ghostty|org.wezfurlong.wezterm|herdr-app)
                 mode=terminal ;;
             buzz-desktop)
                 # WebKitGTK ignores the synthetic ctrl+v keystroke even though
