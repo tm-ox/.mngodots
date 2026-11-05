@@ -108,7 +108,7 @@ export default class Changes extends View {
     });
     this.input.on("submit", (_e, cx) => this.commit(cx));
     this.repoSt = {}; this.rsel = 0; this.rask = null; this.rbusy = null; this.rnote = null; this.rInput = null;
-    if (!Array.isArray(shared("git-repos"))) setShared("git-repos", [home() + "/.mngodots", home() + "/.claude-config", home() + "/workspace"]);
+    if (!Array.isArray(shared("git-repos"))) setShared("git-repos", [home() + "/.mngodots", home() + "/workspace"]);
     if (!shared("git-repos-remote-added")) { setShared("git-repos-remote-added", true); const rr = "tm-serve:/home/tm-serve/workspace"; if (!this.repoList().includes(rr)) setShared("git-repos", [...this.repoList(), rr]); }
     this.detail = null;
     this.inb = shared("inbox") || null;

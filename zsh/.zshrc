@@ -51,7 +51,7 @@ alias .v='vim'
 alias .z='zeditor .'
 alias .a='cd $HOME/workspace'
 alias .x='cd $HOME/.claude'
-alias .X='cd $HOME/.claude-config'
+alias .X='cd $HOME/workspace/config'
 .h() {
   local dir="$HOME/workspace"
   local label="tm"
@@ -64,11 +64,6 @@ alias .X='cd $HOME/.claude-config'
     "$bin" workspace create --cwd "$dir" --label "$label" --focus >/dev/null
   fi
   exec "$bin"
-}
-
-# tuios: restores saved sessions if the daemon is down; no arg = most recent, `.t wrk` = named
-.t() {
-  exec tuios attach "$@"
 }
 
 alias g.='git add .'
