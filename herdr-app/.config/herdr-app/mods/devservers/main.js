@@ -284,7 +284,7 @@ export default class DevServers extends View {
     const row = (id, i, kids) => h_flex().id(id).h(28).px(10).gap(10).items_center().flex_none().rounded(7)
       .bg(i === this.at ? t.selected : "#00000000").hover((s) => s.bg(i === this.at ? t.selected : t.hover)).on_click(() => { this.at = i; cx.notify(); }).children(kids);
     const label = (text, sub) => h_flex().h(26).px(10).mt(8).gap(10).items_center().flex_none()
-      .child(div().text_size(11).font_semibold().text_color(t.muted).child(text))
+      .child(div().text_size(12).font_semibold().text_color(t.muted).child(String(text).toUpperCase()))
       .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(t.dim).child(sub ?? ""));
 
     const nodes = [];
@@ -293,7 +293,7 @@ export default class DevServers extends View {
       const b = it.b, color = it.state === "running" ? t.ansi2 : it.state === "starting" ? t.blocked : t.dim;
       nodes.push(row(`bm-${b.id}`, i, [
         dot(color),
-        div().w(170).flex_none().truncate().text_color(t.foreground).child(b.name),
+        div().w(170).flex_none().truncate().text_color(i === this.at ? t.foreground : t.muted).child(b.name),
         div().flex_none().w(120).truncate().text_size(12).text_color(t.accent).child(it.ls.map((l) => `:${l.port}`).join(" ") || (it.state === "starting" ? "starting…" : "")),
         h_flex().flex_1().min_w(0).gap(10).overflow_hidden().child(div().min_w(0).truncate().text_color(t.muted).child(b.cmd)).child(div().flex_1().min_w(0).truncate().text_size(11).text_color(t.dim).child(tilde(b.folder))),
         ...(it.state === "stopped"
@@ -308,7 +308,7 @@ export default class DevServers extends View {
       nodes.push(row(`ls-${l.pid}-${l.port}`, i, [
         dot(t.ansi2),
         div().w(64).flex_none().text_size(12).text_color(t.accent).child(`:${l.port}`),
-        div().flex_1().min_w(0).truncate().text_color(t.foreground).child(short(l)),
+        div().flex_1().min_w(0).truncate().text_color(i === this.at ? t.foreground : t.muted).child(short(l)),
         div().flex_none().w(48).text_right().text_size(11).text_color(t.dim).child(age(l.up)),
         act(`o-${l.pid}-${l.port}`, "Open", () => this.open(l)),
         act(`r-${l.pid}-${l.port}`, "Restart", (cx) => this.restartListener(l, cx)),

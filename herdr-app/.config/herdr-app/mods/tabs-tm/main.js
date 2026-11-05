@@ -1,6 +1,6 @@
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex } from "gpui-base";
-import { spaces, panes, run, openOverlay, theme, window, shared, layout, settings } from "herdr";
+import { spaces, panes, run, openOverlay, theme, window, shared, setShared, layout, settings } from "herdr";
 
 function find(node, id) {
   if (node?.id === id) return node;
@@ -12,8 +12,10 @@ function find(node, id) {
 }
 
 export default class Tabs extends View {
-  init() {
+  init(_props, cx) {
     this.pressed = null;
+    this.counts = shared("inbox-counts") || null;
+    cx.timer.every(3000, (cx) => { const c = shared("inbox-counts") || null; if (JSON.stringify(c) !== JSON.stringify(this.counts)) { this.counts = c; cx.notify(); } });
     this.panels = JSON.parse(localStorage.getItem("panels") ?? "{}");
   }
 
@@ -89,10 +91,25 @@ export default class Tabs extends View {
           else { run("layout.select", { stack: "panel-body", child: id }); run("layout.show", { id: "panel" }); }
         }).child(svg(icon).size(14)).child(label);
     };
+    // Inbox counts (published by status-git): only what is above zero; a click opens the Inbox filtered to it.
+    const ic = this.counts || {}, day = 864e5, age = ic.oldest ? Date.now() - Date.parse(ic.oldest) : 0;
+    const chip = (k, n, label, color, tail) => h_flex().id(`inbox-${k}`).h(29).px(10).gap(7).flex_none().items_center().rounded(7).border_1().border_color(t.border).cursor_pointer().text_size(12.8)
+      .hover(s => s.bg(t.hover)).on_mouse_down("left", stop)
+      .on_click(() => { setShared("git-tab", "inbox"); setShared("git-card", k); run("mod.open", { name: "changes-float" }); })
+      .child(div().font_semibold().text_color(color).child(String(n))).child(div().text_color(t.muted).child(label))
+      .when(Boolean(tail), el => el.child(div().text_color(color).child(tail)));
+    const chips = [
+      ic.review > 0 && chip("review", ic.review, "to review", t.blocked, age > 3 * day ? `${Math.floor(age / day)}d` : ""),
+      ic.rerev > 0 && chip("rerev", ic.rerev, "re-review", t.blocked),
+      ic.ready > 0 && chip("ready", ic.ready, "ready", t.done),
+      ic.fix > 0 && chip("fix", ic.fix, "to fix", t.blocked),
+    ].filter(Boolean);
+    const chipRow = h_flex().id("inbox-chips").flex_none().gap(6).pl(6).pr(4).items_center().children(chips);
     return h_flex().size_full().min_w(0).px(10).pl(lightsPadding).gap(3).items_center().bg(t.chrome).border_b(1).border_color(t.border)
       .on_mouse_up("left", () => { this.pressed = null; })
       .on_scroll_wheel(e => { if (Math.abs(e.delta.y) >= 1) run(e.delta.y > 0 ? "tab.prev" : "tab.next"); })
       .child(h_flex().id("tab-scroll").flex_1().min_w(0).h_full().items_center().gap(3).overflow_x_scrollbar().children(shown.map(item)))
+      .when(chips.length > 0, el => el.child(chipRow))
       .child(button("tab-new", "+", () => openOverlay({ mod: "new-menu", kind: "popup", width: 250, height: 512 })))
       .when(enabled.includes("files"), el => el.child(panelButton("files", "Files", "mods/files/file.svg")))
       .when(window()?.buttons, el => el.child(button("minimize", "−", () => run("window.minimize")))

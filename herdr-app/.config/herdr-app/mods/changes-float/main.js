@@ -3,13 +3,17 @@ import { v_flex, h_flex, InputState, Input, Scrollbar, v_virtual_list, TextView 
 import { spaces, panes, agents, focused, exec, hc, readTextFile, watchFolder, theme, settings, run, props, closeOverlay, shared, setShared, pickFolder, home, notify } from "herdr";
 
 // Header hints as key chips ("Enter open · Esc" -> [Enter] open [Esc]); same look as the devservers mod.
-const keyChip = (text, t) => div().px(6).h(18).min_w(18).flex().items_center().justify_center().flex_none().rounded(5).border_1().border_color(t.input ?? t.border).bg(t.raised).text_size(11).font_medium().text_color(t.muted).child(text);
+const keyChip = (text, t, on) => div().px(6).h(18).min_w(18).flex().items_center().justify_center().flex_none().rounded(5).border_1().border_color(t.input ?? t.border).bg(t.raised).text_size(11).font_medium().text_color(on ? t.accent : t.muted).child(text);
 const keyHints = (text, t) => h_flex().gap(14).items_center().min_w(0).overflow_hidden().children(text.split(" · ").map((seg) => {
   const w = seg.split(" "); let n = 1;
   while (n < w.length && /^[A-Z]$/.test(w[n])) n++;
   const label = w.slice(n).join(" ");
   return h_flex().gap(6).items_center().flex_none().child(keyChip(w.slice(0, n).join(" "), t)).when(Boolean(label), (e) => e.child(div().text_size(12).text_color(t.dim).child(label)));
 }));
+
+// Column captions above a list: cols = [[text, width | null for flex, "right"?]], widths match the rows below.
+const colHead = (cols, t, px = 10) => h_flex().w_full().flex_none().px(px).gap(10).items_center().text_size(10).font_medium().text_color(t.accent)
+  .children(cols.map(([text, w, right]) => { const e = div().truncate().child(String(text).toUpperCase()); if (w) e.w(w).flex_none(); else e.flex_1().min_w(0); return right ? e.text_right() : e; }));
 
 // Repo pinned to the active tab (else its space): the agents run in ~/workspace while the code lives elsewhere.
 // Stored in shared("git-pins") as { [tabId | "space:"+spaceId]: [repo paths] }; Herdr saves shared state itself.
@@ -39,12 +43,18 @@ const key = () => JSON.stringify(location());
 // Reads write nothing under .git (no index refresh or lock, no fsmonitor cookie):
 // the folder watch would see it, and every refresh would start the next one.
 const READ = ["--no-optional-locks", "-c", "core.fsmonitor=false", "-c", "diff.autoRefreshIndex=false"];
-const TABS = [["dashboard", "Dashboard"], ["changes", "Changes"], ["open", "PRs"], ["issues", "Issues"], ["repos", "Repos"]];
+const TABS = [["inbox", "Inbox"], ["dashboard", "Repo"], ["changes", "Changes"], ["open", "PRs"], ["issues", "Issues"], ["repos", "Backups"]];
 const MERGED_DAYS = 14;
+// Inbox scopes: GitHub orgs searched (status-git reads shared("inbox-orgs")); empty = every org and personal repo.
+const SCOPES = [{ label: "Beyond-One-AU", orgs: ["Beyond-One-AU"] }, { label: "All", orgs: [] }];
+const scopeKey = () => (Array.isArray(shared("inbox-orgs")) ? shared("inbox-orgs") : SCOPES[0].orgs).join(",");
 // Same call file-find uses (detached, in the user's real environment); `hc exec xdg-open` opened nothing.
 const openUrl = (url) => { exec("setsid", ["-f", "xdg-open", url]).catch(() => {}); };
 // Survives closing the window (module scope), so reopening and revisiting a PR show at once and refresh behind.
-const CACHE = { info: {}, details: new Map() };
+const CACHE = { info: {}, details: new Map(), drafts: new Map(), local: new Map(), draftSet: new Set() };
+// Drafts written by the rev worker on the server (docs/<date>-<repo>-<pr>-review.md), read over ssh.
+const REV_HOST = "tm-serve";
+const proposedText = (md) => { const m = /^##\s+Proposed text[^\n]*\n([\s\S]*?)(?=^##\s|$(?![\s\S]))/im.exec(md || ""); return m ? m[1].trim().replace(/(?<!\n)\n(?!\n|\s*[-*] )/g, " ") : ""; };
 const cacheFile = (top, n) => `/tmp/herdr-gitwin-cache/${(top + "_" + n).replace(/[^A-Za-z0-9]/g, "_")}.json`;
 const remember = (key, value) => { CACHE.details.set(key, value); if (CACHE.details.size > 40) CACHE.details.delete(CACHE.details.keys().next().value); };
 const ymd = (ms) => { const d = new Date(ms); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
@@ -73,11 +83,21 @@ function diffRows(lines) {
   });
 }
 
+// Inbox summary cards: each one filters the list to its rows (click again to clear).
+const INBOX_CARDS = [
+  { k: "review", name: "To review", f: (d) => d.sec === "review" },
+  { k: "rerev", name: "Re-review", f: (d) => d.sec === "waiting" && Boolean(d.flag) },
+  { k: "ready", name: "Ready to merge", f: (d) => d.sec === "mine" && d.decision !== "CHANGES_REQUESTED" && d.ci !== "fail" && d.ci !== "wait" && (d.appr.length > 0 || d.decision === "APPROVED") },
+  { k: "fix", name: "Needs fixing", f: (d) => d.sec === "mine" && (d.decision === "CHANGES_REQUESTED" || d.ci === "fail") },
+];
+
 export default class Changes extends View {
   init(_props, cx) {
     const want = shared("git-tab");
     if (want) cx.timer.after(50, () => setShared("git-tab", ""));
-    this.tab = want === "merged" ? "open" : want || "dashboard";
+    const card = shared("git-card"); // header chip click: open the Inbox with that card's filter on
+    if (card) { this.card = card; cx.timer.after(50, () => setShared("git-card", "")); }
+    this.tab = want === "merged" ? "open" : want || "inbox";
     if (want === "merged") cx.timer.after(50, () => setShared("merged-seen", Date.now())); this.info = shared("git-info") || {}; this.remote = shared("git-remote") || {}; this.remoteAt = 0; this.infoAt = 0; this.dsel = -1; this.acts = []; this.order = []; this.repos = null; this.cwdKey = null; this.prLoading = false; this.prAt = 0; this.sel = 0;
     this.files = []; this.rows = []; this.diffWidth = 0; this.message = ""; this.handle = cx.focus_handle();
     this.input = InputState.new({ placeholder: "Commit message" });
@@ -89,7 +109,13 @@ export default class Changes extends View {
     this.input.on("submit", (_e, cx) => this.commit(cx));
     this.repoSt = {}; this.rsel = 0; this.rask = null; this.rbusy = null; this.rnote = null; this.rInput = null;
     if (!Array.isArray(shared("git-repos"))) setShared("git-repos", [home() + "/.mngodots", home() + "/.claude-config", home() + "/workspace"]);
+    if (!shared("git-repos-remote-added")) { setShared("git-repos-remote-added", true); const rr = "tm-serve:/home/tm-serve/workspace"; if (!this.repoList().includes(rr)) setShared("git-repos", [...this.repoList(), rr]); }
     this.detail = null;
+    this.inb = shared("inbox") || null;
+    if (!this.inb || Date.now() - this.inb.at > 45000) setShared("inbox-ask", Date.now());
+    this.loadDraftIndex(cx);
+    cx.timer.every(30000, (cx) => this.loadDraftIndex(cx));
+    cx.timer.every(3000, (cx) => { const b = shared("inbox"), er = shared("inbox-error") || ""; if ((b && b.at !== this.inb?.at) || er !== (this.inbErr ?? "")) { if (b) this.inb = b; this.inbErr = er; cx.notify(); } });
     this.idet = null; this.issues = null; this.iAt = 0; this.iLoading = false; this.iError = null; this.isel = 0; this.ifilter = "all"; this.inew = null;
     this.tInput = InputState.new({ placeholder: "Issue title, Enter for description" });
     this.bInput = InputState.new({ placeholder: "Description (optional), Enter to create" });
@@ -108,7 +134,7 @@ export default class Changes extends View {
     if (fc && fc.context === key()) { this.context = fc.context; this.root = fc.root; this.hasHead = fc.hasHead; this.files = fc.files; this.open = null; }
     this.refresh(cx);
     this.loadPrs(cx);
-    cx.timer.every(10000, (cx) => { if (this.on) this.refresh(cx); this.loadPrs(cx); if (this.tab === "dashboard") this.loadInfo(cx); if (this.tab === "repos") this.loadRepos(cx); if (this.tab === "issues") this.loadIssues(cx); });
+    cx.timer.every(10000, (cx) => { if (this.on) this.refresh(cx); this.loadPrs(cx); if (this.tab === "dashboard") this.loadInfo(cx); if (this.tab === "repos") this.loadRepos(cx); this.loadIssues(cx); });
     if (this.tab === "repos") this.loadRepos(cx);
   }
 
@@ -152,7 +178,7 @@ export default class Changes extends View {
       this.repos = [...seen.values()]; this.prError = this.repos.length ? null : failed || "No git repository with GitHub PRs in this tab";
       this.prAt = Date.now(); this.prLoading = false;
       if (this.cwdKey === cwdKey) this.loadInfo(cx);
-      if (this.tab === "issues") this.loadIssues(cx, true);
+      this.loadIssues(cx, this.tab === "issues");
       cx.notify();
     });
   }
@@ -167,12 +193,59 @@ export default class Changes extends View {
 
   setTab(tab, cx) {
     if (tab === this.tab) return;
-    this.tab = tab; this.sel = 0; this.dsel = -1; this.detail = null;
+    this.tab = tab; this.sel = 0; this.dsel = -1; this.detail = null; this.idet = null;
     this.loadPrs(cx);
     if (tab === "repos") this.loadRepos(cx, true);
     if (tab === "issues") { this.isel = 0; this.loadIssues(cx); }
     if (tab === "open") setShared("merged-seen", Date.now());
     cx.notify();
+  }
+
+  // Inbox rows in display order: review requested (oldest first), reviewed and waiting (flagged first), your own that need action.
+  inboxList(raw) {
+    const b = this.inb;
+    if (!b || b.scope !== scopeKey()) return [];
+    const inRepo = (d) => !this.inRepo || d.repo.split("/")[1] === this.inRepo;
+    const at = (d) => Date.parse(d.createdAt);
+    // Grouped by repo within a section; repos ordered by their most urgent PR (the list is already sorted).
+    const group = (arr) => { const by = new Map(); for (const d of arr) { if (!by.has(d.repo)) by.set(d.repo, []); by.get(d.repo).push(d); } return [...by.values()].flat(); };
+    if (this.inAll) { // every open PR in scope, whoever it is addressed to
+      const asked = new Set(b.review.map((d) => d.url));
+      const all = (b.all ?? []).filter((d) => !d.draft && inRepo(d)).sort((x, y) => at(x) - at(y)).map((d) => ({ ...d, sec: "all", needsMe: asked.has(d.url) }));
+      return group(all);
+    }
+    // Everyone is auto-assigned, so a PR someone else already approved (and that is not risky) drops to its own muted group.
+    const rv = b.review.filter((d) => !d.draft && inRepo(d)).sort((x, y) => at(x) - at(y));
+    const review = rv.filter((d) => !d.covered).map((d) => ({ ...d, sec: "review" })), covered = rv.filter((d) => d.covered).map((d) => ({ ...d, sec: "covered" }));
+    const waiting = b.waiting.filter(inRepo).sort((x, y) => (Number(Boolean(y.flag)) - Number(Boolean(x.flag))) || Date.parse(y.updatedAt) - Date.parse(x.updatedAt)).map((d) => ({ ...d, sec: "waiting" }));
+    const mine = b.mine.filter((d) => inRepo(d) && !d.draft && (d.decision === "CHANGES_REQUESTED" || d.ci === "fail" || ((d.appr.length > 0 || d.decision === "APPROVED") && d.ci !== "wait"))).sort((x, y) => Number(y.appr.length > 0) - Number(x.appr.length > 0)).map((d) => ({ ...d, sec: "mine" }));
+    const out = [...group(review), ...group(waiting), ...group(mine), ...group(covered)], c = INBOX_CARDS.find((x) => x.k === this.card);
+    return raw || !c ? out : out.filter(c.f);
+  }
+
+  // Dashboard link: every open PR of one repo in the Inbox.
+  openInboxFor(name, cx) {
+    this.inRepo = name; this.inAll = true; this.sel = 0;
+    this.setTab("inbox", cx);
+    cx.notify();
+  }
+
+  setScope(i, cx) {
+    setShared("inbox-orgs", SCOPES[i].orgs); setShared("inbox-ask", Date.now());
+    this.sel = 0; cx.notify();
+  }
+
+  openInbox(d, cx) {
+    this.openPr({ number: d.n, url: d.url, title: d.title }, "gh:" + d.repo, cx);
+    this.detail.fromInbox = true;
+    cx.notify();
+  }
+
+  stepInbox(dir, cx) {
+    const list = this.inboxList(), i = list.length ? (this.sel + dir + list.length) % list.length : 0;
+    if (i === this.sel || !list[i]) return;
+    this.sel = i;
+    this.openInbox(list[i], cx);
   }
 
   prList() {
@@ -327,12 +400,26 @@ export default class Changes extends View {
           if (i >= 0) { this.setTab(TABS[i][0], cx); cx.stop_propagation(); return; }
           if (e.key === "tab") { this.setTab(TABS[(TABS.findIndex(([k]) => k === this.tab) + (e.modifiers.shift ? TABS.length - 1 : 1)) % TABS.length][0], cx); cx.stop_propagation(); return; }
         }
+        if (this.tab === "inbox" && !this.typing) {
+          const list = this.inboxList(), k = e.key;
+          if ((k === "down" || k === "j") && list.length) this.sel = (this.sel + 1) % list.length;
+          else if ((k === "up" || k === "k") && list.length) this.sel = (this.sel - 1 + list.length) % list.length;
+          else if (k === "enter" && list[this.sel]) this.openInbox(list[this.sel], cx);
+          else if (k === "b" && list[this.sel]) openUrl(list[this.sel].url);
+          else if (k === "r") setShared("inbox-ask", Date.now());
+          else if (k === "a") { this.inAll = !this.inAll; this.sel = 0; }
+          else if (k === "x" && this.inRepo) { this.inRepo = null; this.sel = 0; }
+          else if (k === "o") this.setScope((SCOPES.findIndex((x) => x.orgs.join(",") === scopeKey()) + 1) % SCOPES.length, cx);
+          else return;
+          cx.stop_propagation(); cx.notify(); return;
+        }
         if (this.tab === "dashboard" && !this.typing) {
           const k = e.key, ord = this.order, pos = ord.indexOf(this.dsel);
           if (k === "down" || k === "j" || k === "right" || k === "l") this.dsel = ord[Math.min(ord.length - 1, pos + 1)] ?? this.dsel;
           else if (k === "up" || k === "k" || k === "left" || k === "h") this.dsel = ord[Math.max(0, pos - 1)] ?? this.dsel;
-          else if ((k === "enter" || k === "o") && this.acts[this.dsel]) this.acts[this.dsel].fn(cx);
-          if (["down", "j", "right", "l", "up", "k", "left", "h", "enter", "o"].includes(k)) { cx.stop_propagation(); cx.notify(); return; }
+          else if (k === "enter" && this.acts[this.dsel]) this.acts[this.dsel].fn(cx);
+          else if (k === "b" && this.acts[this.dsel]?.url) openUrl(this.acts[this.dsel].url);
+          if (["down", "j", "right", "l", "up", "k", "left", "h", "enter", "b"].includes(k)) { cx.stop_propagation(); cx.notify(); return; }
         }
         if (this.tab === "dashboard" && e.key === "r") { this.loadPrs(cx, true); this.loadInfo(cx, true); cx.stop_propagation(); return; }
         if (this.tab === "issues" && !this.typing && this.idet) {
@@ -347,7 +434,7 @@ export default class Changes extends View {
           if (k === "down" || k === "j") this.isel = Math.min(list.length - 1, this.isel + 1);
           else if (k === "up" || k === "k") this.isel = Math.max(0, this.isel - 1);
           else if (k === "enter" && list[this.isel]) this.openIssue(list[this.isel], cx);
-          else if (k === "o" && list[this.isel]) openUrl(list[this.isel].url);
+          else if (k === "b" && list[this.isel]) openUrl(list[this.isel].url);
           else if (k === "r") this.loadIssues(cx, true);
           else if (k === "f") { this.ifilter = { all: "assigned", assigned: "created", created: "all" }[this.ifilter]; this.isel = 0; }
           else if (k === "n") this.newIssue(cx);
@@ -359,6 +446,7 @@ export default class Changes extends View {
           if (e.key === "down" || e.key === "j") this.sel = Math.min(list.length - 1, this.sel + 1);
           else if (e.key === "up" || e.key === "k") this.sel = Math.max(0, this.sel - 1);
           else if (e.key === "enter" && list[this.sel]) this.openPr(list[this.sel], list[this.sel].top, cx);
+          else if (e.key === "b" && list[this.sel]) openUrl(list[this.sel].url);
           else if (e.key === "r") this.loadPrs(cx, true);
           else return;
           cx.stop_propagation(); cx.notify(); return;
@@ -381,18 +469,29 @@ export default class Changes extends View {
         }
       })
       .child(h_flex().h(30).flex_none().pr(10).items_center().border_b(1).border_color(t.border)
-        .children(TABS.map(([k, label], i) => div().id(`gtab-${k}`).h_full().pl(12).pr(6).flex().items_center().cursor_pointer().text_size(12).when(this.tab === k, (e) => e.font_medium().text_color(t.accent)).when(this.tab !== k, (e) => e.text_color(t.dim).hover((x) => x.text_color(t.muted))).on_click((_e, cx) => this.setTab(k, cx))
-          .child(h_flex().gap(6).items_center().child(keyChip(String(i + 1), t)).child(k === "changes" ? `${label} ${this.files.length}` : k === "open" && this.repos ? `${label} ${this.repos.reduce((n, r) => n + r.open.length, 0)}` : k === "issues" && this.issues ? `${label} ${this.iList().length}` : label))))
+        .children(TABS.map(([k, label], i) => {
+          const on = this.tab === k;
+          const text = k === "inbox" && this.inb ? `${label} ${this.inb.review.filter((d) => !d.draft).length}` : k === "changes" ? `${label} ${this.files.length}` : k === "open" && this.repos ? `${label} ${this.repos.reduce((n, r) => n + r.open.length, 0)}` : k === "issues" && this.issues ? `${label} ${this.iList().length}` : label;
+          // Every tab is one bordered pill: number | divider | title; the active one is in the accent, the others dim.
+          const edge = t.input ?? t.border;
+          return div().id(`gtab-${k}`).h_full().pl(i === 0 ? 12 : 4).pr(4).flex().items_center().cursor_pointer().text_size(12).text_color(on ? t.accent : t.dim).when(on, (e) => e.font_medium()).when(!on, (e) => e.hover((x) => x.text_color(t.muted))).on_click((_e, cx) => this.setTab(k, cx))
+            .child(h_flex().h(22).items_center().rounded(6).border_1().border_color(edge).overflow_hidden()
+              .child(div().px(7).h_full().flex().items_center().bg(t.raised).text_size(11).font_medium().text_color(t.muted).child(String(i + 1)))
+              .child(div().w(1).h_full().bg(edge))
+              .child(div().px(8).flex().items_center().child(text)));
+        }))
         .child(div().flex_1())
         .when(!this.detail && this.tab === "changes", (e) => e.child(keyHints("↑↓ files · Enter edit in vim · Esc", t).px(8)).child(div().px(4).text_size(11).text_color(t.ansi2).child(`+${add}`)).child(div().px(4).text_size(11).text_color(t.ansi1).child(`−${del}`)))
-        .when(Boolean(this.detail), (e) => e.child(keyHints("Backspace back · D diff · A approve · C comment · X request changes · M merge · B browser", t).px(8)))
-        .when(!this.detail && this.tab === "dashboard", (e) => e.child(keyHints("arrows/J K select · Enter open · R refresh · Esc", t).px(8)))
-        .when(!this.detail && (this.tab === "open" || this.tab === "merged"), (e) => e.child(keyHints("↑↓ select · Enter open PR · R refresh · Esc", t).px(8)))
-        .when(!this.detail && this.tab === "issues", (e) => e.child(keyHints(this.inew ? "Enter next / create · Esc cancel" : this.idet ? "Backspace back · B browser · Esc" : "↑↓ select · Enter open · N new · F filter: " + this.ifilter + " · R refresh · Esc", t).px(8)))
+        .when(Boolean(this.detail), (e) => e.child(keyHints("Backspace back · " + (this.detail?.fromInbox ? "N P next/prev PR · " : "") + "D diff · A approve · C comment · X request changes · M merge · B browser", t).px(8)))
+        .when(!this.detail && this.tab === "inbox", (e) => e.child(keyHints("↑↓ select · Enter open PR · B browser · A all open PRs · O scope · R refresh · Esc", t).px(8)))
+        .when(!this.detail && this.tab === "dashboard", (e) => e.child(keyHints("arrows/J K select · Enter open · B browser · R refresh · Esc", t).px(8)))
+        .when(!this.detail && (this.tab === "open" || this.tab === "merged"), (e) => e.child(keyHints("↑↓ select · Enter open PR · B browser · R refresh · Esc", t).px(8)))
+        .when(!this.detail && this.tab === "issues", (e) => e.child(keyHints(this.inew ? "Enter next / create · Esc cancel" : this.idet ? "Backspace back · B browser · Esc" : "↑↓ select · Enter open · B browser · N new · F filter: " + this.ifilter + " · R refresh · Esc", t).px(8)))
         .when(!this.detail && this.tab === "repos", (e) => e.child(keyHints(this.rask ? "Enter confirm · Backspace cancel" : "↑↓ select · Enter commit + push · L pull · O open · R refresh · N add · D remove · Esc", t).px(8)))
         .child(div().id("pin").h_full().px(10).flex().items_center().cursor_pointer().text_size(11).text_color(pinOf() ? t.accent : t.dim).hover((x) => x.text_color(pinOf() ? t.accent : t.muted)).on_click((_e, cx) => this.togglePin(cx))
           .child(pinOf() ? `Pinned · ${pinOf()[0].replace(/^\/home\/[^/]+/, "~")}` : "Pin repo (P)")))
       .when(Boolean(this.detail), (e) => e.child(this.detailBody(t)))
+      .when(!this.detail && this.tab === "inbox", (e) => e.child(this.inboxBody(t)))
       .when(!this.detail && this.tab === "dashboard", (e) => e.child(this.dashBody(t)))
       .when(!this.detail && (this.tab === "open" || this.tab === "merged"), (e) => e.child(this.prBody(t)))
       .when(!this.detail && this.tab === "changes", (e) => e.child(this.changesBody(t, enabled)))
@@ -403,7 +502,14 @@ export default class Changes extends View {
   // ---- Repos tab: a saved list of repos (shared("git-repos")) with status, commit + push and pull ----
   repoList() { const v = shared("git-repos"); return Array.isArray(v) ? v : []; }
 
+  // `host:/abs/path` entries (e.g. tm-serve:/home/tm-serve/workspace) run the same script over ssh.
   repoShell(path, script, ...args) {
+    const rm = /^([\w.-]+):(\/.+)$/.exec(path);
+    if (rm) {
+      const q = (x) => "'" + String(x).replace(/'/g, "'\\''") + "'";
+      const body = 'cd "$1" || exit 1; export GIT_TERMINAL_PROMPT=0; ' + script;
+      return exec("ssh", ["-o", "BatchMode=yes", "-o", "ConnectTimeout=8", rm[1], "sh -c " + q(body) + " sh " + [rm[2], ...args].map(q).join(" ")]);
+    }
     return exec("sh", ["-c", 'cd "$1" || exit 1; export GIT_TERMINAL_PROMPT=0; [ -f "$HOME/.keychain/$(uname -n)-sh" ] && . "$HOME/.keychain/$(uname -n)-sh"; ' + script, "sh", path, ...args]);
   }
 
@@ -463,11 +569,11 @@ export default class Changes extends View {
           }
           const p = await this.repoShell(ask.path, "git push 2>&1");
           if (p.code !== 0) throw new Error("Push failed: " + tail(p.stdout || p.stderr));
-          this.rnote = { ok: true, text: `${st?.changed ? `Committed "${msg}" and pushed` : "Pushed"} ${ask.path.replace(/^\/home\/[^/]+/, "~")}` };
+          this.rnote = { ok: true, text: `${st?.changed ? `Committed "${msg}" and pushed` : "Pushed"} ${ask.path.replace(/^(?:([\w.-]+:))?\/home\/[^/]+/, "$1~")}` };
         } else {
           const p = await this.repoShell(ask.path, "git pull --ff-only 2>&1");
           if (p.code !== 0) throw new Error("Pull failed: " + tail(p.stdout || p.stderr));
-          this.rnote = { ok: true, text: `Pulled ${ask.path.replace(/^\/home\/[^/]+/, "~")}: ${tail(p.stdout)}` };
+          this.rnote = { ok: true, text: `Pulled ${ask.path.replace(/^(?:([\w.-]+:))?\/home\/[^/]+/, "$1~")}: ${tail(p.stdout)}` };
         }
       } catch (e) { this.rnote = { ok: false, text: String(e.message ?? e) }; }
       finally { this.rbusy = null; this.rloading = false; this.loadRepos(cx); cx.notify(); }
@@ -489,7 +595,7 @@ export default class Changes extends View {
     });
   }
 
-  openRepo(path, cx) { setPin([path]); this.loadPrs(cx, true); this.setTab("changes", cx); }
+  openRepo(path, cx) { if (/^[\w.-]+:\//.test(path)) { this.rnote = { ok: false, text: "Open works for local repos only." }; cx.notify(); return; } setPin([path]); this.loadPrs(cx, true); this.setTab("changes", cx); }
 
   reposKey(e, cx) {
     const k = e.key, list = this.repoList(), path = list[this.rsel];
@@ -513,7 +619,7 @@ export default class Changes extends View {
   }
 
   reposBody(t) {
-    const list = this.repoList(), tilde = (p) => p.replace(/^\/home\/[^/]+/, "~");
+    const list = this.repoList(), tilde = (p) => p.replace(/^(?:([\w.-]+:))?\/home\/[^/]+/, "$1~");
     this.rsel = Math.max(0, Math.min(this.rsel, list.length - 1));
     const act = (id, text, fn, color) => div().id(id).px(7).h(22).flex().items_center().flex_none().rounded(6).cursor_pointer().text_size(11).text_color(color ?? t.muted)
       .hover((s) => s.bg(t.raised)).on_click((_e, cx) => { fn(cx); cx.stop_propagation(); }).child(text);
@@ -522,7 +628,7 @@ export default class Changes extends View {
       const ship = st && !st.err ? (st.changed ? "Commit + push" : st.ahead ? "Push" : null) : null;
       return h_flex().id(`repo-${i}`).h(34).flex_none().px(10).gap(10).items_center().rounded(7).bg(sel ? t.selected : "#00000000").hover((s) => s.bg(sel ? t.selected : t.hover))
         .on_click((_e, cx) => { this.rsel = i; cx.notify(); })
-        .child(div().w(150).flex_none().truncate().child(path.split("/").pop()))
+        .child(div().w(150).flex_none().truncate().text_color(sel ? t.foreground : t.muted).child((path.includes(":/") ? path.split(":")[0] + ":" : "") + path.split("/").pop()))
         .child(st?.err
           ? div().flex_1().min_w(0).truncate().text_size(11).text_color(t.ansi1).child(st.err)
           : h_flex().flex_1().min_w(0).gap(10).items_center().overflow_hidden()
@@ -569,7 +675,9 @@ export default class Changes extends View {
       'echo "merged $(git branch --merged "$def" --format="%(refname:short)" 2>/dev/null | grep -v -x -e "$def" -e "$(git rev-parse --abbrev-ref HEAD 2>/dev/null)" | wc -l)"',
       'gh run list --branch "$def" --limit 1 --json status,conclusion --jq ".[]|\"ci \\(.status)|\\(.conclusion)\"" 2>/dev/null',
       'gh issue list --state open --limit 100 --json number --jq "\"issues \\(length)\"" 2>/dev/null',
-      'gh issue list --assignee @me --state open --limit 6 --json number,title,url,updatedAt --jq ".[]|\"i \\(.number)|\\(.updatedAt)|\\(.url)|\\(.title)\"" 2>/dev/null',
+      'gh issue list --state open --limit 6 --json number,title,url,createdAt --jq ".[]|\"i \\(.number)|\\(.createdAt)|\\(.url)|\\(.title)\"" 2>/dev/null',
+      'gh issue list --assignee @me --state open --limit 100 --json number --jq "\"a \\(length)\"" 2>/dev/null',
+      "true",
     ].join("; ");
     const repos = this.repos;
     cx.spawn(async (cx) => {
@@ -585,6 +693,7 @@ export default class Changes extends View {
             else if (k === "merged") v.merged = Number(val) || 0;
             else if (k === "ci") { const [status, conclusion] = val.split("|"); v.ci = { status, conclusion }; }
             else if (k === "issues") v.issues = Number(val) || 0;
+            else if (k === "a") v.assigned = Number(val) || 0;
             else if (k === "i") { const [n, at, url, ...title] = val.split("|"); v.mine.push({ n: Number(n), at, url, title: title.join("|") }); }
           }
           next[r.top] = v;
@@ -599,6 +708,7 @@ export default class Changes extends View {
   // Per repo for the dashboard: branch, ahead/behind, last commit, change size, stashes, recent commits and
   // commits per day (one `sh` per repo, read only).
   loadInfo(cx, force) {
+    this.loadIssues(cx); // also covers the cached-PR path, which never reaches the end of loadPrs
     if (!this.repos?.length || this.infoLoading || (!force && Date.now() - this.infoAt < 12000)) return;
     this.infoLoading = true; this.infoAt = Date.now();
     this.loadRemote(cx);
@@ -612,7 +722,7 @@ export default class Changes extends View {
       'echo "stash $(git stash list 2>/dev/null | wc -l)"',
       'echo "remote $(git remote get-url origin 2>/dev/null)"',
       'git log -5 --format="c %h|%an|%ct|%s" 2>/dev/null',
-      'git log --since="14 days ago" --format="d %cd" --date=format:%Y-%m-%d 2>/dev/null',
+      'git log --since="30 days ago" --format="d %cd|%an" --date=format:%Y-%m-%d 2>/dev/null',
     ].join("; ");
     const repos = this.repos;
     cx.spawn(async (cx) => {
@@ -621,7 +731,7 @@ export default class Changes extends View {
         try {
           const o = await hc(["exec", "sh", "-c", script, "sh", r.top]);
           if (o.code !== 0) return;
-          const v = { commits: [], days: {} };
+          const v = { commits: [], days: {}, authors: {} };
           for (const line of o.stdout.split("\n")) {
             const sp = line.indexOf(" "), k = line.slice(0, sp), val = line.slice(sp + 1);
             if (k === "branch") v.branch = val;
@@ -632,7 +742,7 @@ export default class Changes extends View {
             else if (k === "stash") v.stash = Number(val) || 0;
             else if (k === "remote") v.web = /github\.com[:/](.+?)(\.git)?$/.exec(val)?.[1] ? "https://github.com/" + /github\.com[:/](.+?)(\.git)?$/.exec(val)[1] : null;
             else if (k === "c") { const [h, an, ct, ...subj] = val.split("|"); v.commits.push({ h, an, ct: Number(ct) * 1000, subject: subj.join("|") }); }
-            else if (k === "d") v.days[val] = (v.days[val] ?? 0) + 1;
+            else if (k === "d") { const [day, an] = val.split("|"); v.days[day] = (v.days[day] ?? 0) + 1; v.authors[an] = (v.authors[an] ?? 0) + 1; }
           }
           next[r.top] = v;
         } catch {}
@@ -647,17 +757,22 @@ export default class Changes extends View {
     const count = (st) => mine.filter((a) => a.status === st).length;
     const serving = shared("serving") || [];
     const day = 864e5;
-    const acts = [], reg = (fn, rank = null) => acts.push({ fn, rank }) - 1, web = (url) => (url ? () => openUrl(url) : () => {});
+    const acts = [], reg = (fn, rank = null, url = null) => acts.push({ fn, rank, url }) - 1, web = (url) => (url ? () => openUrl(url) : () => {});
     const pickable = (i0, e) => e.when(this.dsel === i0, (x) => x.bg(t.selected));
-    const label = (text, color) => div().px(2).text_size(11).font_semibold().text_color(color ?? t.muted).child(text);
+    const label = (text, color) => div().px(2).text_size(12).font_semibold().text_color(color ?? t.muted).child(String(text).toUpperCase());
     const chip = (text, color) => div().px(7).py(2).rounded(5).border_1().border_color(color ?? t.border).text_size(11).text_color(color ?? t.muted).child(text);
     const tile = (n, name, sub, color, fn) => { const i0 = reg(fn); return v_flex().id(`tile-${i0}`).cursor_pointer().hover((s) => s.bg(t.hover)).on_click((_e, cx) => { this.dsel = i0; fn(cx); cx.notify(); }).flex_1().min_w(0).gap(2).px(14).py(10).rounded(8).bg(t.background).border_1().border_color(this.dsel === i0 ? t.accent : n > 0 && color ? color + "55" : t.border)
       .child(div().text_size(24).font_semibold().text_color(n > 0 && color ? color : t.foreground).child(String(n)))
       .child(div().text_size(11).text_color(t.muted).child(name))
       .child(div().h(14).text_size(10).text_color(t.dim).truncate().child(sub ?? "")); };
-    const link = (d, tail, top) => { const i0 = reg((cx) => this.openPr(d, top, cx), 0); return pickable(i0, h_flex().id(`d-${i0}`).h(30).flex_none().px(10).gap(10).items_center().rounded(6).cursor_pointer().hover((s) => s.bg(t.hover)).on_click((_e, cx) => { this.dsel = i0; this.openPr(d, top, cx); }))
-      .child(div().w(46).flex_none().text_color(t.dim).child(`#${d.number}`)).child(div().flex_1().min_w(0).truncate().child(d.title))
-      .child(div().flex_none().text_size(11).text_color(t.dim).child(d.author?.login ?? "")).child(div().w(74).flex_none().text_right().text_size(11).text_color(t.dim).child(tail)); };
+    const link = (d, tail, top) => { const i0 = reg((cx) => this.openPr(d, top, cx), 0, d.url); return pickable(i0, h_flex().id(`d-${i0}`).h(30).flex_none().px(10).gap(10).items_center().rounded(6).cursor_pointer().hover((s) => s.bg(t.hover)).on_click((_e, cx) => { this.dsel = i0; this.openPr(d, top, cx); }))
+      .child(div().w(46).flex_none().text_color(t.dim).child(`#${d.number}`)).child(div().flex_1().min_w(0).truncate().text_color(this.dsel === i0 ? t.foreground : t.muted).child(d.title))
+      .when(d.state === "OPEN" && (d.reviewRequests ?? []).length > 0, (e) => { // who the review is assigned to (people or teams), highlighted when it is you
+        const who = d.reviewRequests.map((q) => q.login ?? q.name ?? q.slug), mine = d.needsMe || who.includes(shared("git-me"));
+        return e.child(div().max_w(170).flex_none().truncate().text_size(11).text_color(mine ? t.blocked : t.dim).child("review: " + who.join(", ")));
+      })
+      .child(div().w(130).flex_none().truncate().text_right().text_size(11).text_color(t.dim).child(d.author?.login ?? ""))
+      .child(div().w(74).flex_none().text_right().text_size(11).text_color(t.dim).child(tail)); };
     const cards = (this.repos ?? []).map((r) => {
       const i = this.info[r.top], rm = this.remote[r.top], open = r.open, need = open.filter((d) => d.needsMe), fail = open.filter((d) => d.checks === "fail");
       const ok = open.filter((d) => d.reviewDecision === "APPROVED"), wait = open.filter((d) => d.checks === "wait");
@@ -665,51 +780,61 @@ export default class Changes extends View {
       const run = serving.filter((v) => v.cwd === r.top || v.cwd.startsWith(r.top + "/"));
       const oldest = open.length ? Math.max(...open.map((d) => Date.now() - Date.parse(d.createdAt))) : 0;
       const ciState = rm?.ci ? (rm.ci.status !== "COMPLETED" ? "wait" : rm.ci.conclusion === "SUCCESS" ? "pass" : ["FAILURE", "TIMED_OUT", "STARTUP_FAILURE"].includes(rm.ci.conclusion) ? "fail" : "none") : "none";
-      const health = need.length || fail.length || onMain || ciState === "fail" ? t.blocked : wait.length || i?.changed ? t.working : t.done;
+      const health = need.length || fail.length || ciState === "fail" ? t.blocked : wait.length || i?.changed ? t.working : t.done;
       const bars = [];
-      for (let k = 13; k >= 0; k--) bars.push(i?.days?.[ymd(Date.now() - k * day)] ?? 0);
+      for (let k = 29; k >= 0; k--) bars.push(i?.days?.[ymd(Date.now() - k * day)] ?? 0);
       const peak = Math.max(1, ...bars), total = bars.reduce((a, b) => a + b, 0);
-      const needRows = need.slice(0, 5).map((d) => link(d, ago(d.createdAt) + " old", r.top));
-      const openRows = open.filter((d) => !d.needsMe).slice(0, 5).map((d) => link(d, ago(d.createdAt) + " old", r.top));
-      const issueRows = (rm?.mine ?? []).slice(0, 5).map((x) => { const i0 = reg(web(x.url), 0); return pickable(i0, h_flex().id(`is-${i0}`).h(30).flex_none().px(10).gap(10).items_center().rounded(6).cursor_pointer().hover((s) => s.bg(t.hover)).on_click((_e, cx) => { this.dsel = i0; web(x.url)(); cx.notify(); }))
-        .child(div().w(46).flex_none().text_color(t.dim).child(`#${x.n}`)).child(div().flex_1().min_w(0).truncate().child(x.title)).child(div().w(74).flex_none().text_right().text_size(11).text_color(t.dim).child(ago(x.at) + " ago")); });
-      const mergedRows = r.merged.slice(0, 3).map((d) => link(d, ago(d.mergedAt) + " ago", r.top));
-      return h_flex().id(`card-${r.top}`).items_stretch().flex_none().rounded(10).overflow_hidden().border_1().border_color(t.border).bg(t.raised)
+      // PRs opened / merged per day (from the PR list already loaded; drafts and closed-unmerged PRs are not in it)
+      const dayKeys = Array.from({ length: 14 }, (_, n) => ymd(Date.now() - (13 - n) * day)), opened = dayKeys.map(() => 0), mergedN = dayKeys.map(() => 0);
+      for (const d of [...open, ...r.merged]) { const n = dayKeys.indexOf(ymd(Date.parse(d.createdAt))); if (n >= 0) opened[n]++; }
+      for (const d of r.merged) { const n = dayKeys.indexOf(ymd(Date.parse(d.mergedAt))); if (n >= 0) mergedN[n]++; }
+      const prPeak = Math.max(1, ...opened, ...mergedN), openedTotal = opened.reduce((a, b) => a + b, 0), mergedTotal = mergedN.reduce((a, b) => a + b, 0);
+      // Commits by author over the same 14 days: top 4, the rest as "others"
+      const authorsAll = Object.entries(i?.authors ?? {}).sort((a, b) => b[1] - a[1]), authors = authorsAll.slice(0, 4);
+      if (authorsAll.length > 4) authors.push(["others", authorsAll.slice(4).reduce((a, [, n]) => a + n, 0)]);
+      const aColors = [t.accent, t.done, t.working, t.ansi4 ?? t.muted, t.dim];
+      const ir = (this.issues ?? []).find((x) => x.top === r.top)?.list ?? [], me = shared("git-me");
+      const issueRows = ir.slice(0, 5).map((x) => { const i0 = reg((cx) => this.openIssueFromDash(x, r, cx), 0, x.url); return pickable(i0, h_flex().id(`is-${i0}`).h(30).flex_none().px(10).gap(10).items_center().rounded(6).cursor_pointer().hover((s) => s.bg(t.hover)).on_click((_e, cx) => { this.dsel = i0; this.openIssueFromDash(x, r, cx); }))
+        .child(div().w(46).flex_none().text_color(t.dim).child(`#${x.number}`)).child(div().flex_1().min_w(0).truncate().text_color(this.dsel === i0 ? t.foreground : t.muted).child(x.title)).child(div().w(130).flex_none().truncate().text_right().text_size(11).text_color(t.dim).child(x.author?.login ?? "")).child(div().w(74).flex_none().text_right().text_size(11).text_color(t.dim).child(ago(x.createdAt) + " old")); });
+      return h_flex().id(`card-${r.top}`).items_stretch().flex_none().rounded(10).overflow_hidden().border_1().border_color(t.border).bg(t.background)
         .child(div().w(5).flex_none().self_stretch().bg(health))
         .child(v_flex().flex_1().min_w(0).gap(14).p(16)
           .child(h_flex().gap(10).items_center()
-            .child((() => { const i0 = reg(web(i?.web)); return pickable(i0, div().id(`repo-${i0}`).px(6).py(2).rounded(6).font_semibold().text_size(16).cursor_pointer().hover((s) => s.bg(t.hover)).on_click((_e, cx) => { this.dsel = i0; web(i?.web)(); cx.notify(); })).child(r.name); })())
-            .when(Boolean(i), (e) => e.child(chip(i.branch, onMain ? t.blocked : null)))
-            .when(Boolean(i) && (i.ahead > 0 || i.behind > 0), (e) => e.child(chip(`ahead ${i.ahead} | behind ${i.behind}`, t.working)))
+            .child((() => { const i0 = reg(web(i?.web), null, i?.web); return pickable(i0, div().id(`repo-${i0}`).px(6).py(2).rounded(6).font_semibold().text_size(16).cursor_pointer().hover((s) => s.bg(t.hover)).on_click((_e, cx) => { this.dsel = i0; web(i?.web)(); cx.notify(); })).child(r.name); })())
+            .when(Boolean(i) && !onMain, (e) => e.child(chip("branch " + i.branch)))
+            .when(onMain, (e) => e.child(div().px(7).py(2).rounded(5).border_1().border_color(t.border).text_size(11).text_color(t.blocked).child(`branch ${i.branch} · uncommitted changes, branch first`)))
+            .when(Boolean(i) && (i.ahead > 0 || i.behind > 0), (e) => e.child(chip([i.ahead > 0 ? `${i.ahead} unpushed` : "", i.behind > 0 ? `${i.behind} behind remote` : ""].filter(Boolean).join(" · "), t.working)))
             .when(ciState !== "none", (e) => e.child(chip(`${rm.def} CI ` + ({ pass: "passing", fail: "failing", wait: "running" })[ciState], ({ pass: t.done, fail: t.blocked, wait: t.working })[ciState])))
-            .when(Boolean(rm?.merged), (e) => e.child(chip(`${rm.merged} merged branch${rm.merged === 1 ? "" : "es"}`)))
+            .when(Boolean(rm?.merged), (e) => e.child(chip(`${rm.merged} merged local branch${rm.merged === 1 ? "" : "es"}, safe to delete`)))
             .when(Boolean(i?.stash), (e) => e.child(chip(`${i.stash} stash${i.stash === 1 ? "" : "es"}`)))
-            .when(run.length > 0, (e) => e.child(chip(run.map((v) => `:${v.port}`).join(" "), t.working)))
+            .when(run.length > 0, (e) => e.child(chip("dev server " + run.map((v) => `:${v.port}`).join(" "), t.working)))
             .child(div().flex_1())
-            .when(onMain, (e) => e.child(div().text_size(11).text_color(t.blocked).child("changes on " + i.branch + ", branch first")))
             .when(Boolean(i?.ct), (e) => e.child(div().text_size(11).text_color(t.dim).child(`last commit ${ago(new Date(i.ct).toISOString())} ago`))))
           .child(h_flex().gap(10)
-            .child(tile(i?.changed ?? 0, "Changed files", i ? (i.changed ? `+${i.add}  -${i.del}` : "clean") : "", t.working, (cx) => this.setTab("changes", cx)))
-            .child(tile(open.length, "Open PRs", oldest ? `oldest ${Math.round(oldest / day)}d` : "", null, (cx) => this.setTab("open", cx)))
-            .child(tile(need.length, "Need your review", need.length ? "waiting on you" : "", t.blocked, (cx) => need[0] && this.openPr(need[0], r.top, cx)))
-            .child(tile(fail.length, "Failing CI", wait.length ? `${wait.length} running` : "", t.blocked, (cx) => fail[0] && this.openPr(fail[0], r.top, cx)))
-            .child(tile(rm?.mine?.length ?? 0, "Your issues", rm?.issues != null ? `${rm.issues} open` : "", t.working, () => rm?.mine?.[0] && web(rm.mine[0].url)()))
-            .child(tile(ok.length, "Approved", ok.length ? "ready to merge" : "", t.done, (cx) => ok[0] && this.openPr(ok[0], r.top, cx))))
-          .when(needRows.length > 0, (e) => e.child(v_flex().gap(2).child(label("Needs your review", t.blocked)).children(needRows)))
-          .when(openRows.length > 0, (e) => e.child(v_flex().gap(2).child(label("Open PRs")).children(openRows)))
-          .when(issueRows.length > 0, (e) => e.child(v_flex().gap(2).child(label("Your issues")).children(issueRows)))
-          .when(mergedRows.length > 0, (e) => e.child(v_flex().gap(2).child(label("Recently merged", t.done)).children(mergedRows)))
-          .when(!open.length && !r.merged.length, (e) => e.child(div().px(2).text_size(12).text_color(t.dim).child("No pull requests to show for this repo.")))
-          .child(h_flex().gap(24).items_start()
-            .child(v_flex().flex_1().min_w(0).gap(4).child(label("Recent commits"))
+            .child(tile(i?.changed ?? 0, "Changed files", i ? (i.changed ? `+${i.add} −${i.del} lines` : "clean, nothing to commit") : "", t.working, (cx) => this.setTab("changes", cx)))
+            .child(tile(open.length, "Open PRs", oldest ? `${need.length ? need.length + " need you · " : ""}oldest ${Math.round(oldest / day)}d` : "", need.length ? t.blocked : null, (cx) => this.openInboxFor(r.name, cx)))
+            .child(tile(ir.length, "Open issues", ir.some((x) => (x.assignees ?? []).some((a) => a.login === me)) ? `${ir.filter((x) => (x.assignees ?? []).some((a) => a.login === me)).length} assigned to you` : "", t.working, (cx) => { this.ifilter = "all"; this.setTab("issues", cx); })))
+          .when(issueRows.length > 0, (e) => e.child(v_flex().gap(2).child(label("Open issues")).child(colHead([["Issue", 46], ["Title", null], ["Author", 130, true], ["Age", 74, true]], t, 10)).children(issueRows)))
+          .child(v_flex().gap(4).child(label("Recent commits")).child(colHead([["Commit", 56], ["Message", null], ["Author", 130, true], ["Age", 74, true]], t))
               .children((i?.commits ?? []).map((c, n) => { const i0 = reg(web(i.web && `${i.web}/commit/${c.h}`), 1); return pickable(i0, h_flex().id(`c-${i0}`).h(24).flex_none().px(10).gap(10).items_center().rounded(6).cursor_pointer().hover((s) => s.bg(t.hover)).on_click((_e, cx) => { this.dsel = i0; web(i.web && `${i.web}/commit/${c.h}`)(); cx.notify(); }))
                 .child(div().w(56).flex_none().text_size(11).text_color(t.accent).child(c.h))
-                .child(div().flex_1().min_w(0).truncate().child(c.subject))
-                .child(div().flex_none().text_size(11).text_color(t.dim).child(c.an))
-                .child(div().w(48).flex_none().text_right().text_size(11).text_color(t.dim).child(ago(new Date(c.ct).toISOString()))); }))
+                .child(div().flex_1().min_w(0).truncate().text_color(this.dsel === i0 ? t.foreground : t.muted).child(c.subject))
+                .child(div().w(130).flex_none().truncate().text_right().text_size(11).text_color(t.dim).child(c.an))
+                .child(div().w(74).flex_none().text_right().text_size(11).text_color(t.dim).child(ago(new Date(c.ct).toISOString()))); }))
               .when(!(i?.commits?.length), (e) => e.child(div().px(10).text_color(t.dim).child(i ? "No commits yet" : "..."))))
-            .child(v_flex().w(280).flex_none().gap(6).child(label(`Commits, last 14 days (${total})`))
-              .child(h_flex().h(54).gap(4).items_end().px(2).children(bars.map((n) => div().flex_1().h(n ? Math.max(4, Math.round((n / peak) * 52)) : 2).rounded(2).bg(n ? t.accent : t.border)))))));
+          .child(h_flex().gap(24).items_start()
+            .child(v_flex().flex_1().min_w(0).gap(6).child(label(`Commits per day, 30 days (${total})`))
+              .child(h_flex().h(54).gap(3).items_end().px(2).children(bars.map((n) => div().flex_1().h(n ? Math.max(4, Math.round((n / peak) * 52)) : 2).rounded(2).bg(n ? t.accent : t.border)))))
+            .child(v_flex().flex_1().min_w(0).gap(6)
+              .child(h_flex().gap(8).items_center().child(label("PRs per day, 14 days")).child(div().text_size(11).text_color(t.working).child(`${openedTotal} opened`)).child(div().text_size(11).text_color(t.done).child(`${mergedTotal} merged`)))
+              .child(h_flex().h(54).gap(3).items_end().px(2).children(dayKeys.map((_, n) => h_flex().flex_1().h_full().gap(1).items_end()
+                .child(div().flex_1().h(opened[n] ? Math.max(4, Math.round((opened[n] / prPeak) * 52)) : 2).rounded(2).bg(opened[n] ? t.working : t.border))
+                .child(div().flex_1().h(mergedN[n] ? Math.max(4, Math.round((mergedN[n] / prPeak) * 52)) : 2).rounded(2).bg(mergedN[n] ? t.done : t.border))))))
+            .child(v_flex().flex_1().min_w(0).gap(6).child(label("Commits by author, 30 days"))
+              .child(h_flex().h(12).gap(2).px(2).children(authors.map(([, n], k) => div().flex_grow(n).w(0).min_w(0).h_full().rounded(3).bg(aColors[k] ?? t.dim))))
+              .child(h_flex().gap(12).px(2).flex_wrap().children(authors.map(([who, n], k) => h_flex().gap(5).items_center().flex_none()
+                .child(div().w(8).h(8).rounded(4).flex_none().bg(aColors[k] ?? t.dim)).child(div().max_w(110).truncate().text_size(11).text_color(t.dim).child(`${who} ${n}`))))
+                .when(!authors.length, (e) => e.child(div().text_size(11).text_color(t.dim).child("No commits in 30 days")))))));
     });
     this.acts = acts;
     this.order = acts.map((a, n) => [a.rank, n]).filter(([r]) => r !== null).sort((a, b) => a[0] - b[0] || a[1] - b[1]).map(([, n]) => n);
@@ -726,6 +851,8 @@ export default class Changes extends View {
 
   // ---- PR detail inside the window (read via `gh pr view` / `gh pr diff`; actions only after an explicit confirm) ----
   ghRun(det, args) {
+    // "gh:owner/repo" = a repo without a local clone (Inbox): run from $HOME with -R.
+    if (det.top.startsWith("gh:")) return hc(["exec", "sh", "-c", 'cd "$HOME" || exit 1; r=$1; shift; exec gh "$@" -R "$r"', "sh", det.top.slice(3), ...args]);
     return hc(["exec", "sh", "-c", 'cd "$1" || exit 1; shift; exec gh "$@"', "sh", det.top, ...args]);
   }
 
@@ -734,6 +861,7 @@ export default class Changes extends View {
     this.detail = { n: d.number, top, url: d.url, title: d.title, loading: !hit, view: "overview", data: hit ?? null, error: null, rows: diff?.rows ?? [], width: diff?.width ?? 300, diffState: diff ? "ready" : "none", confirm: null, note: null, busy: false };
     cx.notify();
     this.fetchDetail(cx);
+    this.loadRevDraft(cx);
     if (!hit) { // last time's copy from disk shows while the fresh one loads
       const det = this.detail;
       cx.spawn(async (cx) => {
@@ -745,12 +873,56 @@ export default class Changes extends View {
     }
   }
 
+  loadDraftIndex(cx) {
+    cx.spawn(async (cx) => {
+      try {
+        const r = await exec("ssh", ["-o", "BatchMode=yes", "-o", "ConnectTimeout=5", REV_HOST, "sh -c 'ls \"$HOME\"/workspace/rev/docs/ 2>/dev/null'"]);
+        if (r.code !== 0) return;
+        const set = new Set();
+        for (const f of r.stdout.split("\n")) { const m = /^\d{4}-\d{2}-\d{2}-(.+)-(\d+)-review\.md$/.exec(f.trim()); if (m) set.add(m[1] + "#" + m[2]); }
+        try { // plus final texts written on this machine: docs/drafts/<repo>-pr-<n>.md
+          const l = await hc(["exec", "sh", "-c", 'find "$HOME/workspace" "$HOME/repos" -maxdepth 8 -path "*/docs/drafts/*-pr-*.md" 2>/dev/null']);
+          if (l.code === 0) for (const f of l.stdout.split("\n")) { const m = /\/(.+)-pr-(\d+)\.md$/.exec(f.trim().split("/").pop() ? "/" + f.trim().split("/").pop() : ""); if (m) set.add(m[1] + "#" + m[2]); }
+        } catch {}
+        const before = [...CACHE.draftSet].sort().join(","), after = [...set].sort().join(",");
+        CACHE.draftSet = set;
+        if (before !== after) cx.notify();
+      } catch {}
+    });
+  }
+
+  loadRevDraft(cx) {
+    const det = this.detail;
+    if (!det) return;
+    const name = det.top.split("/").pop(), key = name + "#" + det.n;
+    det.draft = CACHE.drafts.get(key) ?? null;
+    det.local = CACHE.local.get(key) ?? null;
+    if (!/^[\w.-]+$/.test(name)) return;
+    cx.spawn(async (cx) => { // a final text written on this machine (e.g. passport's docs/drafts/<repo>-pr-<n>.md) wins over rev's proposed text
+      try {
+        const r = await hc(["exec", "sh", "-c", 'f=$(find "$HOME/workspace" "$HOME/repos" -maxdepth 8 -path "*/docs/drafts/$1-pr-$2.md" -print -quit 2>/dev/null); [ -n "$f" ] && cat "$f"', "sh", name, String(det.n)]);
+        const text = r.code === 0 ? r.stdout.trim().replace(/(?<!\n)\n(?!\n|\s*[-*] )/g, " ").replace(/(\*\*[^\n]+\*\*)\n(?=- )/g, "$1\n\n") : ""; // unwrap, and keep a blank line between a bold heading and its bullets
+        if (text) { CACHE.local.set(key, text); if (this.detail === det) { det.local = text; cx.notify(); } }
+      } catch {}
+    });
+    cx.spawn(async (cx) => {
+      try {
+        const cmd = 'f=$(ls -t "$HOME"/workspace/rev/docs/*-' + name + "-" + det.n + '-review.md 2>/dev/null | head -1); [ -n "$f" ] && cat "$f"';
+        const r = await exec("ssh", ["-o", "BatchMode=yes", "-o", "ConnectTimeout=5", REV_HOST, "sh -c '" + cmd + "'"]);
+        if (r.code === 0 && r.stdout.trim()) {
+          CACHE.drafts.set(key, r.stdout);
+          if (this.detail === det) { det.draft = r.stdout; cx.notify(); }
+        }
+      } catch {}
+    });
+  }
+
   fetchDetail(cx) {
     const det = this.detail;
     if (!det) return;
     cx.spawn(async (cx) => {
       try {
-        const r = await this.ghRun(det, ["pr", "view", String(det.n), "--json", "number,title,body,author,state,isDraft,mergeable,reviewDecision,reviews,comments,statusCheckRollup,files,additions,deletions,headRefName,baseRefName,labels,createdAt,mergedAt,url"]);
+        const r = await this.ghRun(det, ["pr", "view", String(det.n), "--json", "number,title,body,author,state,isDraft,mergeable,reviewDecision,reviewRequests,reviews,comments,statusCheckRollup,files,additions,deletions,headRefName,baseRefName,labels,createdAt,mergedAt,url"]);
         if (this.detail !== det) return;
         if (r.code !== 0) throw new Error((r.stderr || r.stdout || "gh pr view failed").trim().split("\n")[0]);
         det.data = JSON.parse(r.stdout); det.error = null; remember(`${det.top}#${det.n}`, det.data);
@@ -791,7 +963,18 @@ export default class Changes extends View {
     const det = this.detail;
     if (!det || det.busy || !det.data) return;
     det.confirm = { kind, method: "merge" }; det.note = null;
-    if (kind === "comment" || kind === "request") { this.dInput.set_value(""); this.dInput.focus(); }
+    if (kind === "comment" || kind === "request" || kind === "approve") {
+      det.prefill = det.local || proposedText(det.draft); this.dInput.set_value(det.prefill); this.dInput.focus();
+      // Prefill from an agent-written draft: <any project>/docs/drafts/<repo>-pr-<n>.md (first line block, trimmed).
+      const name = det.top.split("/").pop(), n = det.n;
+      cx.spawn(async (cx) => {
+        try {
+          const r = await hc(["exec", "sh", "-c", 'f=$(find "$HOME/workspace" "$HOME/repos" -maxdepth 8 -path "*/docs/drafts/$1-pr-$2.md" -print -quit 2>/dev/null); [ -n "$f" ] && cat "$f"', "sh", name, String(n)]);
+          const text = r.code === 0 ? r.stdout.trim() : "";
+          const cur = this.dInput.value?.() ?? ""; if (text && this.detail === det && det.confirm?.kind === kind && (!cur || cur === proposedText(det.draft))) { this.dInput.set_value(text); cx.notify(); } // a local draft (e.g. passport's) wins over rev's untouched prefill
+        } catch {}
+      });
+    }
     cx.notify();
   }
 
@@ -803,9 +986,11 @@ export default class Changes extends View {
   runAction(cx) {
     const det = this.detail, c = det?.confirm;
     if (!det || !c || det.busy) return;
-    const text = (this.dInput.value() ?? "").trim();
+    let text = (this.dInput.value() ?? "").trim();
+    // The box is one line: if the text is still the prefilled draft, post the original with its line breaks and bullets.
+    if (det.prefill && text.replace(/\s+/g, "") === det.prefill.replace(/\s+/g, "")) text = det.prefill; // the one-line box drops newlines, so compare ignoring all whitespace
     let args;
-    if (c.kind === "approve") args = ["pr", "review", String(det.n), "--approve"];
+    if (c.kind === "approve") args = ["pr", "review", String(det.n), "--approve", ...(text ? ["-b", text] : [])];
     else if (c.kind === "comment" && text) args = ["pr", "review", String(det.n), "--comment", "-b", text];
     else if (c.kind === "request" && text) args = ["pr", "review", String(det.n), "--request-changes", "-b", text];
     else if (c.kind === "merge") args = ["pr", "merge", String(det.n), "--" + c.method];
@@ -818,25 +1003,31 @@ export default class Changes extends View {
         const r = await this.ghRun(det, args);
         if (r.code !== 0) throw new Error((r.stderr || r.stdout || "gh failed").trim().split("\n")[0]);
         det.note = { ok: true, text: `${done} #${det.n}` };
-        this.prAt = 0; this.loadPrs(cx, true); this.fetchDetail(cx);
+        this.prAt = 0; this.loadPrs(cx, true); this.fetchDetail(cx); setShared("inbox-ask", Date.now());
       } catch (e) { det.note = { ok: false, text: String(e).replace(/^Error: /, "") }; }
       det.busy = false; cx.notify();
     });
+  }
+
+  // One step back: a confirm/comment box closes, the diff returns to the overview, the overview returns to the list.
+  detailBack(cx) {
+    const det = this.detail;
+    if (det.confirm) this.cancelAction(cx);
+    else if (det.view === "diff") { det.view = "overview"; cx.notify(); }
+    else { this.detail = null; this.handle.focus(); cx.notify(); }
   }
 
   detailKey(e, cx) {
     const det = this.detail, k = e.key;
     if (k === "escape" && det.confirm) { this.cancelAction(cx); return true; } // only reaches us from the comment box
     if (this.typing) return false; // the comment box has the keys
-    if (k === "backspace" || k === "left" || k === "h") {
-      if (det.confirm) this.cancelAction(cx); else { this.detail = null; this.handle.focus(); cx.notify(); }
-      return true;
-    }
+    if (k === "backspace" || k === "left" || k === "h") { this.detailBack(cx); return true; }
     if (det.confirm) {
       if (det.confirm.kind === "merge" && ["1", "2", "3"].includes(k)) { det.confirm.method = ["merge", "squash", "rebase"][+k - 1]; cx.notify(); return true; }
       if (k === "enter" && det.confirm.kind !== "comment" && det.confirm.kind !== "request") { this.runAction(cx); return true; }
       return true;
     }
+    if (det.fromInbox && (k === "n" || k === "p")) { this.stepInbox(k === "n" ? 1 : -1, cx); return true; }
     if (k === "d") { det.view = det.view === "diff" ? "overview" : "diff"; if (det.view === "diff") this.loadDiff(cx); cx.notify(); return true; }
     if (k === "b") { openUrl(det.url); return true; }
     if (k === "a") { this.askAction("approve", cx); return true; }
@@ -851,9 +1042,10 @@ export default class Changes extends View {
     const btn = (id, text, fn, color, hint) => div().id(id).px(10).py(4).rounded(6).border_1().border_color(color ?? t.border).cursor_pointer().text_size(12).text_color(color ?? t.foreground).hover((s) => s.bg(t.hover)).on_click((_e, cx) => fn(cx)).child(hint ? `${text} (${hint})` : text);
     const stateColor = d?.state === "MERGED" ? t.accent : d?.state === "CLOSED" ? t.blocked : t.done;
     const rv = { APPROVED: ["approved", t.done], CHANGES_REQUESTED: ["changes requested", t.blocked], REVIEW_REQUIRED: ["review needed", t.muted] }[d?.reviewDecision] ?? null;
-    const section = (title, color) => div().px(2).pt(6).text_size(11).font_semibold().text_color(color ?? t.muted).child(title);
+    const section = (title, color) => div().px(2).pt(6).text_size(12).font_semibold().text_color(color ?? t.muted).child(title.toUpperCase());
     const bar = h_flex().h(44).flex_none().px(14).gap(8).items_center().border_b(1).border_color(t.border)
-      .child(btn("pd-back", "Back", (cx) => { this.detail = null; cx.notify(); }, null, "Backspace"))
+      .child(btn("pd-back", "Back", (cx) => this.detailBack(cx), null, "Backspace"))
+      .child(div().flex_none().px(7).h(20).flex().items_center().rounded(5).border_1().border_color(t.border).text_size(11).text_color(t.accent).child(det.top.startsWith("gh:") ? det.top.slice(3) : det.top.split("/").pop()))
       .child(div().flex_1().min_w(0).truncate().font_semibold().child(`#${det.n}  ${det.title}`))
       .child(btn("pd-view", det.view === "diff" ? "Overview" : "Diff", (cx) => { det.view = det.view === "diff" ? "overview" : "diff"; if (det.view === "diff") this.loadDiff(cx); cx.notify(); }, null, "D"))
       .child(btn("pd-approve", "Approve", (cx) => this.askAction("approve", cx), t.done, "A"))
@@ -864,9 +1056,8 @@ export default class Changes extends View {
     const c = det.confirm;
     const confirm = c && h_flex().flex_none().px(14).py(8).gap(10).items_center().border_b(1).border_color(t.border).bg(t.raised)
       .child(div().text_size(12).text_color(t.foreground).child(({ approve: `Approve #${det.n}?`, comment: `Comment on #${det.n}:`, request: `Request changes on #${det.n}:`, merge: `Merge #${det.n} with a ${c.method} commit?` })[c.kind]))
-      .when(c.kind === "comment" || c.kind === "request", (e) => e.child(div().id("pd-input").flex_1().min_w(0).h(30).px(10).flex().items_center().rounded(8).border_1().border_color(this.typing ? t.accent : t.border).cursor_text().on_mouse_down("left", (_e, cx) => cx.stop_propagation()).child(Input.new(this.dInput).h_full().text_size(12).text_color(t.foreground))))
+      .when(c.kind === "comment" || c.kind === "request" || c.kind === "approve", (e) => e.child(div().id("pd-input").flex_1().min_w(0).h(30).px(10).flex().items_center().rounded(8).border_1().border_color(this.typing ? t.accent : t.border).cursor_text().on_mouse_down("left", (_e, cx) => cx.stop_propagation()).child(Input.new(this.dInput).h_full().text_size(12).text_color(t.foreground))))
       .when(c.kind === "merge", (e) => e.child(div().text_size(11).text_color(t.dim).child("1 merge | 2 squash | 3 rebase")).child(div().flex_1()))
-      .when(c.kind === "approve", (e) => e.child(div().flex_1()))
       .child(btn("pd-go", "Confirm", (cx) => this.runAction(cx), t.accent, "Enter"))
       .child(btn("pd-cancel", "Cancel", (cx) => this.cancelAction(cx), null, "Backspace"));
     const note = det.note && div().flex_none().px(14).py(6).text_size(12).text_color(det.note.ok ? t.done : t.blocked).child(det.note.text);
@@ -884,7 +1075,9 @@ export default class Changes extends View {
       const cc = (st) => ["SUCCESS", "NEUTRAL", "SKIPPED"].includes(st) ? t.done : ["FAILURE", "ERROR", "TIMED_OUT", "CANCELLED", "ACTION_REQUIRED"].includes(st) ? t.blocked : t.working;
       const byAuthor = new Map();
       for (const r of d.reviews ?? []) if (r.state !== "COMMENTED" || !byAuthor.has(r.author?.login)) byAuthor.set(r.author?.login, r.state);
-      body = v_flex().id("pr-detail").flex_1().min_h(0).overflow_y_scrollbar().p(16).gap(8)
+      // Assigned reviewers (people or teams) that have not reviewed yet, or were asked again, whoever they are.
+      for (const q of d.reviewRequests ?? []) byAuthor.set(q.login ?? q.name ?? q.slug, "REQUESTED");
+      body = v_flex().id("pr-detail").flex_1().min_w(0).min_h(0).overflow_y_scrollbar().p(16).gap(8)
         .child(h_flex().gap(8).items_center().flex_wrap()
           .child(div().px(8).py(2).rounded(5).border_1().border_color(stateColor).text_size(11).text_color(stateColor).child(d.isDraft ? "DRAFT" : d.state))
           .when(Boolean(rv), (e) => e.child(div().px(8).py(2).rounded(5).border_1().border_color(rv[1]).text_size(11).text_color(rv[1]).child(rv[0])))
@@ -893,11 +1086,23 @@ export default class Changes extends View {
           .child(div().text_size(12).text_color(t.muted).child(`${d.author?.login ?? ""} | ${d.headRefName} into ${d.baseRefName} | +${d.additions} -${d.deletions} in ${(d.files ?? []).length} files | opened ${ago(d.createdAt)} ago`)))
         .when(checks.length > 0, (e) => e.child(section(`Checks (${checks.length})`)).child(v_flex().gap(2).children(checks.slice(0, 14).map((x, i) => h_flex().id(`chk-${i}`).h(22).gap(8).items_center().px(4)
           .child(div().w(8).h(8).rounded(4).flex_none().bg(cc(x.st))).child(div().flex_1().min_w(0).truncate().child(x.name)).child(div().text_size(11).text_color(t.dim).child(x.st.toLowerCase().replace(/_/g, " ")))))))
-        .when(byAuthor.size > 0, (e) => e.child(section("Reviews")).child(v_flex().gap(2).children([...byAuthor].map(([who, st], i) => h_flex().id(`rv-${i}`).h(22).gap(8).px(4).child(div().w(120).truncate().child(who ?? "")).child(div().text_color(st === "APPROVED" ? t.done : st === "CHANGES_REQUESTED" ? t.blocked : t.muted).child(st.toLowerCase().replace(/_/g, " ")))))))
+        .when(byAuthor.size > 0, (e) => e.child(section("Reviews")).child(v_flex().gap(2).children([...byAuthor].map(([who, st], i) => h_flex().id(`rv-${i}`).h(22).gap(8).px(4).child(div().w(120).truncate().child(who ?? "")).child(div().text_color(st === "APPROVED" ? t.done : st === "CHANGES_REQUESTED" ? t.blocked : st === "REQUESTED" ? t.working : t.muted).child(st === "REQUESTED" ? "review requested" : st.toLowerCase().replace(/_/g, " ")))))))
         .child(section("Description"))
         .child(d.body?.trim() ? TextView.markdown("pr-body", d.body.slice(0, 20000)) : div().text_color(t.dim).child("No description."))
         .when((d.comments ?? []).length > 0, (e) => e.child(section(`Comments (${d.comments.length})`)).children(d.comments.slice(-5).map((cm, i) => v_flex().id(`cm-${i}`).gap(2).py(4).child(div().text_size(11).text_color(t.dim).child(`${cm.author?.login ?? ""} | ${ago(cm.createdAt)} ago`)).child(div().child((cm.body ?? "").slice(0, 700))))))
         .when((d.files ?? []).length > 0, (e) => e.child(section(`Files (${d.files.length})`)).child(v_flex().gap(1).children(d.files.slice(0, 40).map((f, i) => h_flex().id(`fl-${i}`).h(22).gap(8).px(4).items_center().child(div().flex_1().min_w(0).truncate().text_size(12).child(f.path)).child(div().text_size(11).text_color(t.ansi2).child(`+${f.additions}`)).child(div().text_size(11).text_color(t.ansi1).child(`-${f.deletions}`))))));
+    }
+    if ((det.draft || det.local) && det.view !== "diff") { // rev's draft sits to the right of the PR itself, so the two never blend
+      const rd = det.draft || "", left = body, draftPost = det.local || proposedText(rd), pi = rd.search(/^##\s+Proposed text/im), draftMain = pi >= 0 ? rd.slice(0, pi).trimEnd() : rd;
+      body = h_flex().flex_1().min_h(0)
+        .child(left)
+        .child(div().w(1).flex_none().h_full().bg(t.border))
+        .child(v_flex().id("pr-draft").flex_1().min_w(0).min_h(0).overflow_y_scrollbar().p(16).gap(14).bg(t.raised)
+          .when(Boolean(draftPost), (e) => e.child(section(det.local ? "Will be posted · passport" : "Will be posted", t.muted)))
+          .when(Boolean(draftPost), (e) => e.child(v_flex().id("pr-draft-post").p(12).rounded(8).border_1().border_color(t.accent)
+            .child(TextView.markdown("pr-draft-post-md", draftPost))))
+          .when(Boolean(draftMain), (e) => e.child(section("Draft from rev · notes", t.muted)))
+          .when(Boolean(draftMain), (e) => e.child(TextView.markdown("pr-draft-md", draftMain.slice(0, 20000)))));
     }
     return v_flex().flex_1().min_h(0).child(bar).when(Boolean(c), (e) => e.child(confirm)).when(Boolean(note), (e) => e.child(note)).child(body);
   }
@@ -943,11 +1148,12 @@ export default class Changes extends View {
     const det = this.idet, d = det.d, x = det.data ?? d;
     const btn = (id, text, fn, hint) => div().id(id).px(10).py(4).rounded(6).border_1().border_color(t.border).cursor_pointer().text_size(12).text_color(t.foreground).hover((s) => s.bg(t.hover)).on_click((_e, cx) => fn(cx)).child(`${text} (${hint})`);
     const chip = (text, color) => div().px(8).py(2).rounded(5).border_1().border_color(color).text_size(11).text_color(color).child(text);
-    const section = (title) => div().px(2).pt(6).text_size(11).font_semibold().text_color(t.muted).child(title);
+    const section = (title) => div().px(2).pt(6).text_size(12).font_semibold().text_color(t.muted).child(title.toUpperCase());
     const comments = det.data?.comments ?? [];
     return v_flex().flex_1().min_h(0)
       .child(h_flex().h(44).flex_none().px(14).gap(8).items_center().border_b(1).border_color(t.border)
         .child(btn("id-back", "Back", (cx) => { this.idet = null; cx.notify(); }, "Backspace"))
+        .child(div().flex_none().px(7).h(20).flex().items_center().rounded(5).border_1().border_color(t.border).text_size(11).text_color(t.accent).child(d.repo))
         .child(div().flex_1().min_w(0).truncate().font_semibold().child(`#${d.number}  ${d.title}`))
         .child(btn("id-web", "Browser", () => openUrl(d.url), "B")))
       .child(v_flex().id("issue-detail").flex_1().min_h(0).overflow_y_scrollbar().p(16).gap(8)
@@ -958,6 +1164,11 @@ export default class Changes extends View {
         .child(section("Description"))
         .child(det.data ? (x.body?.trim() ? TextView.markdown("issue-body", x.body.slice(0, 20000)) : div().text_color(t.dim).child("No description.")) : div().text_color(t.dim).child(det.error ?? "Loading…"))
         .when(comments.length > 0, (e) => e.child(section(`Comments (${comments.length})`)).children(comments.slice(-8).map((cm, i) => v_flex().id(`ic-${i}`).gap(2).py(4).child(div().text_size(11).text_color(t.dim).child(`${cm.author?.login ?? ""} | ${ago(cm.createdAt)} ago`)).child(div().child((cm.body ?? "").slice(0, 1500)))))));
+  }
+
+  openIssueFromDash(x, r, cx) {
+    this.ifilter = "all"; this.setTab("issues", cx);
+    this.openIssue({ ...x, top: r.top, repo: r.name }, cx);
   }
 
   newIssue(cx) {
@@ -996,16 +1207,73 @@ export default class Changes extends View {
         .when(n.stage === "body", (x) => x.child(box("ni-body", this.bInput, true)))
         .when(Boolean(n.note), (x) => x.child(div().text_size(11).text_color(t.ansi1).child(n.note)))))
       .when(!n && Boolean(this.iNote), (e) => e.child(div().px(12).pt(8).text_size(11).text_color(t.done).child(this.iNote)))
-      .child(v_flex().id("issue-list").flex_1().min_h(0).overflow_y_scrollbar().p(6)
+      .child(v_flex().id("issue-list").flex_1().min_h(0).overflow_y_scrollbar().p(14)
         .children(list.map((d, i) => h_flex().id(`is-${i}`).h(34).flex_none().px(10).gap(10).items_center().rounded(7).cursor_pointer().when(i === this.isel, (e) => e.bg(t.selected)).hover((s) => s.bg(t.hover))
           .on_click((_e, cx) => { this.isel = i; this.openIssue(d, cx); })
           .child(div().w(46).flex_none().text_color(t.dim).child(`#${d.number}`))
-          .child(div().flex_1().min_w(0).truncate().child(d.title))
+          .child(div().flex_1().min_w(0).truncate().text_color(i === this.isel ? t.foreground : t.muted).child(d.title))
           .when(multi, (e) => e.child(div().flex_none().text_size(11).text_color(t.dim).child(d.repo)))
           .when((d.labels ?? []).length > 0, (e) => e.child(div().max_w(160).truncate().flex_none().text_size(11).text_color(t.dim).child(d.labels.slice(0, 2).map((l) => l.name).join(", "))))
           .child(div().max_w(100).truncate().flex_none().text_size(11).text_color(t.dim).child(d.author?.login ?? ""))
           .child(div().w(60).flex_none().text_right().text_size(11).text_color(t.dim).child(ago(d.createdAt)))))
         .when(!list.length, (e) => e.child(div().p(8).text_color(t.dim).child(this.iError || (this.issues ? (this.ifilter === "all" ? "No open issues" : "No open issues for this filter (F to change)") : "Loading issues…")))));
+  }
+
+  inboxBody(t) {
+    const list = this.inboxList();
+    const col = { pass: t.done, fail: t.blocked, wait: t.working, none: t.dim };
+    const mark = { pass: "✓", fail: "✗", wait: "…", none: "" };
+    const heads = { all: ["All open PRs", t.muted], review: ["Review requested", t.blocked], waiting: ["Reviewed · waiting on the author", t.muted], mine: ["Your PRs", t.muted], covered: ["Already approved by someone else", t.dim] };
+    const label = (d) => {
+      if (d.sec === "waiting") return d.flag === "re-review" ? ["new commits", t.blocked] : d.flag === "replied" ? ["replied", t.working] : d.my === "APPROVED" ? ["you approved", t.done] : d.my === "CHANGES_REQUESTED" ? ["you requested changes", t.muted] : ["you commented", t.dim];
+      if (d.sec === "all") return d.needsMe ? ["needs you", t.blocked] : d.decision === "APPROVED" ? ["approved", t.done] : d.decision === "CHANGES_REQUESTED" ? ["changes requested", t.muted] : ["", t.dim];
+      if (d.sec === "mine") return d.decision === "CHANGES_REQUESTED" ? ["changes requested", t.blocked] : d.ci === "fail" ? ["CI failing", t.blocked] : d.risk && d.appr.length < 2 ? [`2nd approval? ${d.risk}`, t.working] : ["ready to merge", t.done];
+      if (d.sec === "covered") return [`approved · ${d.appr[0]}`, t.done];
+      if (d.sec === "review") return d.risk ? [d.appr.length ? `needs 2nd · ${d.risk}` : `${d.risk} · no approval`, t.working] : ["no approval", t.muted];
+      return ["", t.dim];
+    };
+    const count = (sec) => list.filter((d) => d.sec === sec).length;
+    const cur = scopeKey();
+    const pills = h_flex().flex_none().px(14).pt(12).gap(6).items_center()
+      .child(div().pr(4).text_size(11).text_color(t.dim).child("Scope"))
+      .children(SCOPES.map((x, i) => { const on = x.orgs.join(",") === cur; return div().id(`ib-scope-${i}`).h(22).px(9).flex().items_center().rounded(6).border_1().cursor_pointer().text_size(11).border_color(t.border).text_color(on ? t.accent : t.dim).when(!on, (e) => e.hover((s) => s.bg(t.hover))).on_click((_e, cx) => this.setScope(i, cx)).child(x.label); }))
+      .child(div().flex_1())
+      .when(Boolean(this.inRepo), (e) => e.child(div().id("ib-repo").h(22).px(9).flex().items_center().rounded(6).border_1().border_color(t.border).text_color(t.accent).cursor_pointer().text_size(11).on_click((_e, cx) => { this.inRepo = null; this.sel = 0; cx.notify(); }).child(`${this.inRepo} ×`)))
+      .child(div().id("ib-all").h(22).px(9).flex().items_center().rounded(6).border_1().cursor_pointer().text_size(11).border_color(t.border).text_color(this.inAll ? t.accent : t.dim).when(!this.inAll, (e) => e.hover((s) => s.bg(t.hover))).on_click((_e, cx) => { this.inAll = !this.inAll; this.sel = 0; cx.notify(); }).child("All open PRs"));
+    // Compact summary cards (counts over the unfiltered list); click filters, click again clears.
+    const all = this.inboxList(true), day = 864e5;
+    const oldest = all.filter((d) => d.sec === "review").sort((x, y) => Date.parse(x.createdAt) - Date.parse(y.createdAt))[0];
+    const cards = this.inAll ? null : h_flex().flex_none().px(14).pt(12).pb(2).gap(8).children(INBOX_CARDS.map((c) => {
+      const n = all.filter(c.f).length, on = this.card === c.k;
+      const color = { review: t.blocked, rerev: t.blocked, ready: t.done, fix: t.blocked }[c.k];
+      const sub = c.k === "review" && oldest ? `oldest ${ago(oldest.createdAt)}` : "";
+      const old = c.k === "review" && oldest && Date.now() - Date.parse(oldest.createdAt) > 3 * day;
+      return h_flex().id(`ib-card-${c.k}`).flex_1().min_w(0).h(54).px(14).gap(12).items_center().rounded(8).bg(t.background).border_1().border_color(on ? t.accent : n > 0 ? color + "55" : t.border).cursor_pointer().when(!on, (e) => e.hover((x) => x.bg(t.hover)))
+        .on_click((_e, cx) => { this.card = on ? null : c.k; this.sel = 0; cx.notify(); })
+        .child(div().h(30).flex_none().flex().items_center().text_size(32).font_semibold().text_color(n > 0 ? color : t.dim).child(String(n)))
+        .child(v_flex().flex_1().min_w(0).h(30).gap(1)
+          .child(div().h(16).flex().items_center().truncate().text_size(12).text_color(n > 0 ? t.foreground : t.dim).child(c.name))
+          .child(div().h(13).flex().items_center().truncate().text_size(10).text_color(old ? t.blocked : t.dim).child(n > 0 ? sub : "")));
+    }));
+    return v_flex().flex_1().min_h(0).child(pills).when(Boolean(cards), (e) => e.child(cards)).child(v_flex().id("inbox-list").flex_1().min_h(0).overflow_y_scrollbar().p(14)
+      .children(list.flatMap((d, i) => {
+        const [text, color] = label(d), first = list[i - 1]?.sec !== d.sec, newRepo = first || list[i - 1].repo !== d.repo;
+        const head = first ? [h_flex().id(`ib-h-${d.sec}`).flex_none().px(10).pt(i ? 14 : 0).pb(6).gap(8).items_baseline().text_size(12).font_semibold().child(div().text_color(t.muted).child(heads[d.sec][0].toUpperCase())).child(div().text_color(d.sec === "review" ? t.blocked : d.sec === "waiting" ? t.done : t.dim).child(String(count(d.sec)))), ...(i === 0 ? [colHead([["PR", 44], ["CI", 22], ["Title", null], ["Status", 124], ["Lines", 84, true], ["Author", 130, true], ["Age", 74, true]], t)] : [])] : [];
+        const rn = list.filter((x) => x.sec === d.sec && x.repo === d.repo).length;
+        const sub = newRepo ? [div().id(`ib-r-${i}`).flex_none().px(10).pt(first ? 0 : 8).pb(2).text_size(11).font_medium().text_color(t.muted).child(`${d.repo.split("/")[1]}  ·  ${rn}`)] : [];
+        return [...head, ...sub, h_flex().id(`ib-${i}`).h(28).flex_none().px(10).gap(10).items_center().rounded(7).cursor_pointer().when(i === this.sel, (e) => e.bg(t.selected)).hover((s) => s.bg(i === this.sel ? t.selected : t.hover))
+          .on_click((_e, cx) => { this.sel = i; this.openInbox(d, cx); })
+          .child(div().w(44).flex_none().text_size(12).text_color(t.accent).child(`#${d.n}`))
+          .child(div().w(22).flex_none().text_color(col[d.ci]).child(mark[d.ci]))
+          .child(div().flex_1().min_w(0).truncate().text_color(i === this.sel ? t.foreground : t.muted).child(d.title))
+          .child(div().w(60).flex_none().pr(14).flex().items_center().justify_end().child(CACHE.draftSet.has(`${d.repo.split("/")[1]}#${d.n}`) && d.sec !== "waiting" && !d.my ? div().px(6).h(18).flex().items_center().rounded(5).border_1().border_color(t.border).text_size(10).text_color(t.accent).child("DRAFT") : div()))
+          .child(div().w(124).flex_none().truncate().text_size(11).text_color(color).child(text))
+          .child(div().w(84).flex_none().text_right().text_size(11).text_color(t.dim).child(`+${d.add} −${d.del}`))
+          .child(div().w(130).flex_none().truncate().text_right().text_size(11).text_color(t.dim).child(d.author))
+          .child(div().w(74).flex_none().text_right().text_size(11).text_color(t.dim).child(ago(d.sec === "waiting" ? d.updatedAt : d.createdAt)))];
+      }))
+      .when(!list.length, (e) => e.child(div().p(8).text_color(t.dim).child(shared("inbox-error") && !this.inb ? "Could not load: " + shared("inbox-error") : this.inb && this.inb.scope === cur ? "Nothing needs your attention" : "Loading…")))
+      .when(Boolean(shared("inbox-error")) && Boolean(this.inb), (e) => e.child(div().px(10).pt(10).text_size(11).text_color(t.blocked).child("Last refresh failed: " + shared("inbox-error")))));
   }
 
   prBody(t) {
@@ -1014,19 +1282,23 @@ export default class Changes extends View {
     const mark = { pass: "✓", fail: "✗", wait: "…", none: "" };
     const review = (d) => d.reviewDecision === "APPROVED" ? ["approved", t.done] : d.reviewDecision === "CHANGES_REQUESTED" ? ["changes requested", t.blocked] : d.reviewDecision === "REVIEW_REQUIRED" ? ["review needed", t.muted] : ["", t.muted];
     const multi = (this.repos?.length ?? 0) > 1;
-    return v_flex().id("pr-list").flex_1().min_h(0).overflow_y_scrollbar().p(6)
+    return v_flex().id("pr-list").flex_1().min_h(0).overflow_y_scrollbar().p(14)
       .children(list.flatMap((d, i) => {
         const [rv, rc] = review(d);
-        const sep = d.isMerged && !list[i - 1]?.isMerged ? [div().id("pr-merged-sep").flex_none().px(10).pt(10).pb(4).text_size(11).font_semibold().text_color(t.done).child(`Recently merged · last ${MERGED_DAYS} days`)] : [];
+        const sep = d.isMerged && !list[i - 1]?.isMerged ? [div().id("pr-merged-sep").flex_none().px(10).pt(14).pb(6).text_size(12).font_semibold().text_color(t.done).child(`Recently merged · last ${MERGED_DAYS} days`.toUpperCase())] : [];
         return [...sep, h_flex().id(`pr-${i}`).h(34).flex_none().px(10).gap(10).items_center().rounded(7).cursor_pointer().when(i === this.sel, (e) => e.bg(t.selected)).hover((s) => s.bg(t.hover))
           .on_click((_e, cx) => this.openPr(d, d.top, cx))
           .child(div().w(46).flex_none().text_color(t.dim).child(`#${d.number}`))
           .when(!d.isMerged, (e) => e.child(div().w(14).flex_none().text_color(col[d.checks]).child(mark[d.checks])))
           .when(d.isMerged, (e) => e.child(div().w(14).flex_none().text_color(t.done).child("✓")))
-          .child(div().flex_1().min_w(0).truncate().child(d.title))
+          .child(div().flex_1().min_w(0).truncate().text_color(i === this.sel ? t.foreground : t.muted).child(d.title))
           .when(multi, (e) => e.child(div().flex_none().text_size(11).text_color(t.dim).child(d.repo)))
           .child(div().max_w(180).truncate().flex_none().text_size(11).text_color(t.dim).child(d.headRefName))
           .when(!d.isMerged && Boolean(rv), (e) => e.child(div().flex_none().text_size(11).text_color(rc).child(rv)))
+          .when(!d.isMerged && (d.reviewRequests ?? []).length > 0, (e) => { // assigned reviewers (people or teams), highlighted when it is you
+            const who = d.reviewRequests.map((q) => q.login ?? q.name ?? q.slug);
+            return e.child(div().max_w(150).flex_none().truncate().text_size(11).text_color(d.needsMe ? t.blocked : t.dim).child("review: " + who.join(", ")));
+          })
           .child(div().w(60).flex_none().text_right().text_size(11).text_color(t.dim).child(d.isMerged ? `merged ${ago(d.mergedAt)}` : ago(d.createdAt)))];
       }))
       .when(!list.length, (e) => e.child(div().p(8).text_color(t.dim).child(this.prError || (this.repos ? "No open or recently merged PRs (drafts hidden)" : "Loading PRs…"))));
@@ -1034,11 +1306,11 @@ export default class Changes extends View {
 
   changesBody(t, enabled) {
     return v_flex().flex_1().min_h(0)
-      .child(v_flex().id("changes-list").flex_none().h(Math.min(200, Math.max(44, this.files.length * 28 + 12))).overflow_y_scrollbar().p(6).border_b(1).border_color(t.border).children(this.files.map((f) => {
+      .child(v_flex().id("changes-list").flex_none().h(Math.min(200, Math.max(44, this.files.length * 28 + 28))).overflow_y_scrollbar().p(14).border_b(1).border_color(t.border).children(this.files.map((f) => {
         const parts = f.path.split("/"), name = parts.pop();
         return h_flex().id(`change-${f.path}`).h(28).flex_none().px(8).gap(8).items_center().rounded(7).cursor_pointer().when(this.open === f.path, (e) => e.bg(t.selected)).hover((s) => s.bg(t.hover)).on_click((_e, cx) => this.pick(f.path, cx))
           .child(div().w(14).text_size(11).text_color(f.status === "A" ? t.ansi2 : f.status === "D" ? t.ansi1 : f.status === "U" ? t.ansi1 : t.blocked).child(f.status))
-          .child(h_flex().flex_1().min_w(0).child(div().text_color(t.dim).truncate().child(parts.length ? parts.join("/") + "/" : "")).child(div().max_w(260).min_w(0).truncate().child(name)))
+          .child(h_flex().flex_1().min_w(0).child(div().text_color(t.dim).truncate().child(parts.length ? parts.join("/") + "/" : "")).child(div().max_w(260).min_w(0).truncate().text_color(this.open === f.path ? t.foreground : t.muted).child(name)))
           .when(f.add > 0, (e) => e.child(div().text_size(11).text_color(t.ansi2).child(`+${f.add}`))).when(f.del > 0, (e) => e.child(div().text_size(11).text_color(t.ansi1).child(`−${f.del}`)));
       })).when(!this.files.length, (e) => e.child(div().p(8).text_color(t.dim).child(this.error || (this.loading ? "Loading changes…" : this.root ? "No uncommitted changes" : "No folder")))))
       .when(this.limited, el => el.child(div().px(12).py(4).text_size(11).text_color(t.dim).child("Showing the first 1,000 changed files")))

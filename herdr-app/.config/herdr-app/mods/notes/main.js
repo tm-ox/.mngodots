@@ -433,7 +433,7 @@ export default class Notes extends View {
 
   preview(t, button, chip) {
     const r = this.sel;
-    const card = (el) => el.flex_1().min_w(0).min_h(0).h_full().rounded(10).overflow_hidden().border_1().border_color(this.pvFocus ? t.accent : t.border).bg(t.raised);
+    const card = (el) => el.flex_1().min_w(0).min_h(0).h_full().rounded(10).overflow_hidden().border_1().border_color(this.pvFocus ? t.accent : t.border).bg(t.background);
     if (!r) return card(v_flex().items_center().justify_center().child(div().text_size(12).text_color(t.dim).child("Select an entry to preview it.")));
     const it = r.it;
     const done = it.task && it.done;
@@ -500,7 +500,7 @@ export default class Notes extends View {
     this.pvOff = Math.min(this.pvOff, this.pvMax);
     const openCount = this.groups.reduce((n, g) => n + g.items.filter((i) => !(i.task && i.done)).length, 0);
     const tab = (id, text, on, fn) => div().id(id).h_full().px(12).flex().items_center().cursor_pointer().text_size(12).when(on, (e) => e.font_medium().text_color(t.accent)).when(!on, (e) => e.text_color(t.dim).hover((x) => x.text_color(t.muted))).on_click((_e, cx) => fn(cx)).child(text);
-    const chip = (id, text, on, fn) => div().id(id).h(22).px(9).flex().items_center().rounded(11).cursor_pointer().text_size(11).border_1().border_color(on ? t.accent : t.border).bg(on ? t.selected : t.raised).text_color(on ? t.accent : t.muted).hover((x) => x.bg(t.hover)).on_click((_e, cx) => fn(cx)).child(text);
+    const chip = (id, text, on, fn) => div().id(id).h(22).px(9).flex().items_center().rounded(11).cursor_pointer().text_size(11).border_1().border_color(t.border).text_color(on ? t.accent : t.dim).hover((x) => x.bg(t.hover)).on_click((_e, cx) => fn(cx)).child(text);
     const button = (id, text, primary, fn) => div().id(id).h(30).px(14).flex().items_center().rounded(8).cursor_pointer().text_size(12).font_medium().border_1().border_color(primary ? t.accent : t.border).bg(primary ? t.accent : t.raised).text_color(primary ? t.accent_foreground : t.muted).hover((x) => x.bg(primary ? t.accent : t.hover)).on_click((_e, cx) => fn(cx)).child(text);
     const shell = (header, body) => v_flex().id("notes").track_focus(this.handle).on_key_down((e, cx) => this.onKey(e, cx, sel))
       .size_full().min_h(0).rounded(10).overflow_hidden().border_1().border_color(t.border).bg(t.background).text_size(13)
@@ -561,7 +561,7 @@ export default class Notes extends View {
                 const i = i0 + this.top;
                 if (r.head) {
                   return this.scope === "all"
-                    ? div().id("nh-" + i).pt(i ? 12 : 0).pb(4).px(10).text_size(11).font_semibold().text_color(t.muted).child(r.head.label)
+                    ? div().id("nh-" + i).pt(i ? 12 : 0).pb(4).px(10).text_size(12).font_semibold().text_color(t.muted).child(String(r.head.label).toUpperCase())
                     : div().id("nh-" + i).h(0);
                 }
                 const { it } = r;
@@ -575,7 +575,7 @@ export default class Notes extends View {
                       ? div().id("nc-" + r.id).w(16).h(16).flex_none().flex().items_center().justify_center().rounded(4).border_1().border_color(done ? t.accent : t.border).when(done, (e) => e.bg(t.accent).text_color(t.accent_foreground).text_size(11).child("✓")).cursor_pointer().on_click((_e, cx) => { cx.stop_propagation(); this.tick(r, cx); })
                       : div().w(16).flex_none().text_center().text_color(t.dim).child("•"),
                   )
-                  .child(div().flex_1().min_w(0).truncate().text_color(done ? t.dim : t.foreground).when(done, (e) => e.line_through()).child(stripTags(it.text)))
+                  .child(div().flex_1().min_w(0).truncate().text_color(done ? t.dim : on ? t.foreground : t.muted).when(done, (e) => e.line_through()).child(stripTags(it.text)))
                   .when(Boolean(it.body), (e) => e.child(div().flex_none().text_size(11).text_color(t.dim).child("¶")))
                   .children(tagsOf(it.text).slice(0, 2).map((tg) => div().flex_none().h(18).px(7).flex().items_center().rounded(9).bg(t.raised).border_1().border_color(t.border).text_size(11).text_color(t.dim).child("#" + tg)))
                   .child(div().flex_none().w(44).text_right().text_size(11).text_color(t.dim).child(age(done ? it.doneOn : it.added)));

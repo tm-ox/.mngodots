@@ -3,13 +3,13 @@
 // Dirs mode: Enter opens a shell there in a split, Ctrl+T in a new tab.
 // Ctrl+F files, Ctrl+D dirs, Ctrl+R repo/here scope, Up/Down or Ctrl+J/K move, Esc closes.
 // Preview: Ctrl+L (or Tab) moves the keyboard to the preview: Ctrl+J/K or j/k scroll, d/u or space page,
-// Ctrl+D/U half page, PgUp/PgDn or Space/Ctrl+F/B page, gg/G ends, Enter opens, Ctrl+T new tab; Ctrl+H (or Tab, i, /) goes back to the search. Ctrl+E toggles rendered/raw markdown (rendered scrolls by wheel only).
+// Ctrl+D/U half page, PgUp/PgDn or Space/Ctrl+F/B page, gg/G ends, Enter opens, Ctrl+T new tab; Ctrl+H (or Tab, i, /) goes back to the search. Ctrl+E toggles rendered/raw markdown (rendered scrolls by wheel/scrollbar only; raw has the keys).
 // The script engine has a tight time budget, so listing and fuzzy matching run natively
 // (fd + fzf --filter through `hc exec`); this file only draws the results.
 // .gitignore is respected, except .env* files, which are always included.
 
-import { View, div } from "gpui-kit";
-import { v_flex, h_flex, InputState, Input, TextView } from "gpui-base";
+import { View, div, list } from "gpui-kit";
+import { v_flex, h_flex, InputState, Input, TextView, Scrollbar } from "gpui-base";
 import { hc, focused, run, exec, theme, props, closeOverlay, readTextFile, settings } from "herdr";
 
 // Header hints as key chips ("Enter open · Esc" -> [Enter] open [Esc]); same look as the devservers mod.
@@ -29,18 +29,6 @@ const isExternal = (name, alt) => EXTERNAL.has((name.split(".").pop() || "").toL
 const openExternal = (abs) => { exec("setsid", ["-f", "xdg-open", abs]).catch(() => {}); };
 const MAX_SHOWN = 100;
 const PV_HALF = 15, PV_PAGE = 30;
-// Rendered markdown can't be measured, so estimate its height from the source (tuned from screenshots: line 23px, ~108 chars
-// per line, table row 36px; 620 = visible pane height) and return the scroll limit in 22px steps.
-const mdLimit = (md) => {
-  let px = 16;
-  for (const l of md.split("\n")) {
-    if (!l.trim()) px += 10;
-    else if (/^#{1,6}\s/.test(l)) px += 40;
-    else if (/^\s*\|/.test(l)) px += /^\s*\|[\s:|-]+$/.test(l) ? 0 : 36;
-    else px += Math.ceil(l.length / 108) * 23;
-  }
-  return Math.max(0, Math.round((px * 1.05 - 620) / 22));
-};
 const PV_LINES = 1000, PV_SHOWN = 90; // lines read / lines drawn from the scroll offset
 const listFile = (base, mode) => `/tmp/herdr-ff-${mode}-${(base ?? ".").replace(/[^A-Za-z0-9]/g, "_")}.list`;
 const LIST_SH = 'umask 077; cd "$1" || exit 1; { fd --type "$2" --hidden --exclude .git; [ "$2" = f ] && fd --type f --hidden --no-ignore --glob ".env*" --exclude .git --exclude node_modules; } | awk \'!s[$0]++\' > "$3.new" && mv "$3.new" "$3"';
@@ -158,7 +146,7 @@ export default class FileFind extends View {
           else if (text.includes("\0")) lines = ["Binary file"];
           else {
             lines = text.slice(0, 200000).replace(/\n$/, "").split("\n").slice(0, PV_LINES).map((l) => (l.length > 3000 ? l.slice(0, 3000) + "…" : l.replace(/\t/g, "  ")));
-            if (lines.length && /\.(md|markdown)$/i.test(item)) { lines.md = text.slice(0, 20000); lines.mdLim = mdLimit(lines.md); }
+            if (lines.length && /\.(md|markdown)$/i.test(item)) { lines.md = text.slice(0, 20000); }
           }
         } else {
           const r = await hc(["exec", "ls", "-1Ap", "--group-directories-first", path]);
@@ -224,7 +212,7 @@ export default class FileFind extends View {
 
   maxOff() {
     const pv = this.pvLines;
-    return pv.md && !this.raw ? pv.mdLim ?? 0 : Math.max(0, pv.length - this.pvVis);
+    return Math.max(0, pv.length - this.pvVis);
   }
 
   scrollPv(n) {
@@ -255,13 +243,20 @@ export default class FileFind extends View {
     const off = Math.min(this.pvOff, this.maxOff());
     // Header mirrors the shipped pane header (pane-named): 30px, 12px text, hairline underline; tabs are full-height
     // sections with an accent underline when active. Keep changes-float in sync.
-    const tab = (id, text, key, on, fn) => div().id(id).h_full().pl(12).pr(6).flex().items_center().cursor_pointer().text_size(12).when(on, (e) => e.font_medium().text_color(t.accent)).when(!on, (e) => e.text_color(t.dim).hover((x) => x.text_color(t.muted))).on_click((_e, cx) => fn(cx)).child(h_flex().gap(6).items_center().child(keyChip(key, t)).child(text));
+    const tab = (id, text, key, on, fn, first) => div().id(id).h_full().pl(first ? 12 : 4).pr(4).flex().items_center().cursor_pointer().text_size(12).text_color(on ? t.accent : t.dim).when(on, (e) => e.font_medium()).when(!on, (e) => e.hover((x) => x.text_color(t.muted))).on_click((_e, cx) => fn(cx))
+      .child(h_flex().h(22).items_center().rounded(6).border_1().border_color(t.input ?? t.border).overflow_hidden()
+        .child(div().px(7).h_full().flex().items_center().bg(t.raised).text_size(11).font_medium().text_color(t.muted).child(key))
+        .child(div().w(1).h_full().bg(t.input ?? t.border))
+        .child(div().px(8).flex().items_center().child(text)));
     const browsing = this.mode === "dirs" && Boolean(pv.dir);
     const hint = this.pfocus && browsing
       ? "Ctrl+J/K select · Enter open / enter folder · h up · Ctrl+D/U half · gg/G ends · Ctrl+T tab · Ctrl+H back"
       : !this.pfocus && browsing ? "Ctrl+L browse folder · Enter shell here"
+      : this.pfocus && pv.md && !this.raw
+      ? "Wheel scrolls · e raw (keys scroll) · Enter open · Ctrl+T tab · Ctrl+H back"
       : this.pfocus
       ? "Ctrl+J/K line · Ctrl+D/U half · PgDn/PgUp page · gg/G ends · " + (pv.md ? "e raw · " : "") + "Enter open · Ctrl+T tab · Ctrl+H back"
+      : pv.md && !this.raw ? "Ctrl+L focus preview · Wheel scrolls · Ctrl+E raw (keys scroll)"
       : "Ctrl+L focus preview · PgDn/PgUp scroll" + (pv.md ? " · Ctrl+E raw" : "");
     return v_flex()
       .id("file-find")
@@ -335,9 +330,9 @@ export default class FileFind extends View {
       .text_size(13)
       .child(
         h_flex().h(30).flex_none().pr(10).items_center().border_b(1).border_color(t.border)
-          .child(tab("ff-files", "Files", "Ctrl+F", this.mode === "files", (cx) => this.setMode("files", cx)))
+          .child(tab("ff-files", "Files", "Ctrl+F", this.mode === "files", (cx) => this.setMode("files", cx), true))
           .child(tab("ff-dirs", "Dirs", "Ctrl+D", this.mode === "dirs", (cx) => this.setMode("dirs", cx)))
-          .child(div().id("ff-scope").h_full().pl(12).pr(6).flex().items_center().cursor_pointer().text_size(12).text_color(t.dim).hover((x) => x.text_color(t.muted)).on_click((_e, cx) => this.toggleScope(cx)).child(h_flex().gap(6).items_center().child(keyChip("Ctrl+R", t)).child(this.scope === "repo" ? "Repo" : "Here")))
+          .child(tab("ff-scope", this.scope === "repo" ? "Repo" : "Here", "Ctrl+R", false, (cx) => this.toggleScope(cx)))
           .child(div().flex_1().min_w(0).truncate().px(10).text_size(12).text_color(t.dim).child((this.base() ?? "").replace(/^\/home\/[^/]+/, "~")))
           .child(keyHints("Enter split · Ctrl+T tab · Ctrl+O other app · Esc", t)),
       )
@@ -379,15 +374,15 @@ export default class FileFind extends View {
               ),
           )
           .child(
-            div().flex_1().min_w(0).min_h(0).h_full().relative().rounded(10).overflow_hidden().border_1().border_color(this.pfocus ? t.accent : t.border).bg(t.raised)
-              .font_family(settings().font_family ?? "JetBrains Mono").text_size(14).text_color(t.foreground)
+            div().flex_1().min_w(0).min_h(0).h_full().relative().rounded(10).overflow_hidden().border_1().border_color(this.pfocus ? t.accent : t.border).bg(t.background)
+              .font_family(settings().font_family ?? "JetBrains Mono").text_size(14).text_color(t.muted)
               .child(
                 v_flex().size_full().min_h(0)
                   .child(
                     (pv.md && !this.raw)
-                      ? div().flex_1().min_h(0).overflow_hidden().relative()
-                          .on_scroll_wheel((e, cx) => { const dy = e.delta_lines?.y ?? e.delta.y; if (dy) { this.scrollPv(dy < 0 ? 3 : -3); cx.notify(); } })
-                          .child(div().absolute().top(-off * 22).left(0).w_full().px(14).py(8).child(TextView.markdown("ff-md-" + this.pvKey, pv.md)))
+                      ? div().flex_1().min_h(0).relative()
+                          .child(list("ff-mdl-" + this.pvKey, 1, () => "md", () => div().w_full().px(14).py(8).text_color(t.muted).child(TextView.markdown("ff-md-" + this.pvKey, pv.md).text_color(t.muted))).size_full())
+                          .child(Scrollbar.vertical("ff-mdl-" + this.pvKey).absolute().inset_0())
                       : pv.length
                         ? v_flex().flex_1().min_h(0).overflow_hidden().py(6)
                             .on_scroll_wheel((e, cx) => { const dy = e.delta_lines?.y ?? e.delta.y; if (dy) { this.scrollPv(dy < 0 ? 3 : -3); cx.notify(); } })

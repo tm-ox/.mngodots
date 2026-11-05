@@ -80,7 +80,7 @@ export default class Help extends View {
                 groups.map(([name, rows]) =>
                   v_flex()
                     .gap(2)
-                    .child(div().px(10).text_size(11).font_semibold().text_color(t.muted).child(name))
+                    .child(div().px(10).text_size(12).font_semibold().text_color(t.muted).child(String(name).toUpperCase()))
                     .children(
                       rows.map((k, i) =>
                         h_flex()

@@ -28,6 +28,45 @@ const checkOf = (list) => {
 
 // A review request counts when it names you or a team you belong to.
 const asked = (d, me) => { const teams = shared("git-teams") || []; return (d.reviewRequests ?? []).some((q) => q.login === me || (q.slug && teams.includes(q.slug))); };
+// Inbox: PRs that name you (review requested), PRs you already reviewed (waiting on the author), and your own.
+// One GraphQL call covers every repo you can see, cloned or not. Published as shared("inbox"); the git window
+// asks for a refresh by writing shared("inbox-ask") (checked on the 5 s tick).
+const INBOX_QUERY = `fragment F on PullRequest {
+  number title url isDraft createdAt updatedAt additions deletions changedFiles reviewDecision headRefOid
+  author { login }
+  repository { nameWithOwner }
+  commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
+  latestReviews(first: 10) { nodes { author { login } state submittedAt commit { oid } } }
+  comments(last: 1) { nodes { createdAt author { login } } }
+  files(first: 100) { nodes { path } }
+}
+query($q1: String!, $q2: String!, $q3: String!, $q4: String!) {
+  a: search(query: $q1, type: ISSUE, first: 50) { nodes { ...F } }
+  b: search(query: $q2, type: ISSUE, first: 50) { nodes { ...F } }
+  c: search(query: $q3, type: ISSUE, first: 50) { nodes { ...F } }
+  d: search(query: $q4, type: ISSUE, first: 100) { nodes { ...F } }
+}`;
+const ciOf = (s) => s === "SUCCESS" ? "pass" : s === "FAILURE" || s === "ERROR" ? "fail" : s ? "wait" : "none";
+// Risk heuristics (a hint, never a gate): paths that touch auth or infrastructure, or a large diff. The review
+// policy asks for a second approval on those; the lead dev's call stays with you.
+const RISK_AUTH = /(^|\/)(auth|oauth|login|sso|session|permissions?|rbac|iam|security|secrets?|crypto)(\/|\.|-|_|$)/i;
+const RISK_INFRA = /(^|\/)(terraform|infra|infrastructure|deploy|k8s|helm|docker|migrations?)(\/|\.|-|_|$)|\.github\/workflows|Dockerfile|\.tf$/i;
+const riskOf = (n) => {
+  const paths = (n.files?.nodes ?? []).map((f) => f.path);
+  return paths.some((p) => RISK_AUTH.test(p)) ? "auth" : paths.some((p) => RISK_INFRA.test(p)) ? "infra" : n.additions + n.deletions > 800 ? "large" : "";
+};
+const inboxRow = (n, me) => {
+  const rev = n.latestReviews?.nodes ?? [], mine = rev.find((x) => x.author?.login === me), last = n.comments?.nodes?.[0];
+  const flag = mine && mine.commit?.oid && mine.commit.oid !== n.headRefOid ? "re-review"
+    : mine && last && last.author?.login !== me && Date.parse(last.createdAt) > Date.parse(mine.submittedAt) ? "replied" : "";
+  const by = n.author?.login ?? "";
+  const appr = rev.filter((x) => x.state === "APPROVED" && x.author?.login && x.author.login !== by).map((x) => x.author.login);
+  const risk = riskOf(n);
+  return { repo: n.repository.nameWithOwner, n: n.number, title: n.title, url: n.url, author: by, createdAt: n.createdAt, updatedAt: n.updatedAt, draft: n.isDraft, add: n.additions, del: n.deletions, files: n.changedFiles, ci: ciOf(n.commits?.nodes?.[0]?.commit?.statusCheckRollup?.state), decision: n.reviewDecision ?? "", my: mine?.state ?? "", flag, appr, risk, covered: appr.length > 0 && !(risk && appr.length < 2) };
+};
+// A PR of yours is ready once someone approved, nothing asks for changes and CI is not failing or running.
+const readyOf = (d) => !d.draft && d.decision !== "CHANGES_REQUESTED" && (d.appr.length > 0 || d.decision === "APPROVED") && d.ci !== "fail" && d.ci !== "wait";
+
 export default class WorkspaceStatus extends View {
   init(_props, cx) {
     this.dirty = null;
@@ -39,13 +78,18 @@ export default class WorkspaceStatus extends View {
     this.known = new Set(); // repos already scanned once (first scan only records)
     this.merged = []; // merges noticed since the Merged tab was last opened
     this.reviews = []; // open PRs that ask for tm's review, across the active tab and pinned repos
-    this.asked = new Set(); // review requests already announced
+    this.rerev = 0; // reviewed PRs with new commits or replies since your review
+    this.asked = new Set(); // review requests already announced (inbox)
+    this.readyAnn = new Set(); // own PRs already announced as ready to merge
+    this.ready = 0;
+    this.inboxAt = 0; this.inboxBusy = false; this.inboxSeen = false;
     this.me = null;
     this.poll(cx);
     this.listen(cx);
     this.prs(cx);
+    this.inbox(cx);
     let tick = 0;
-    cx.timer.every(5000, (cx) => { this.poll(cx); this.prs(cx); if (tick++ % 3 === 0) this.listen(cx); });
+    cx.timer.every(5000, (cx) => { this.poll(cx); this.prs(cx); this.inbox(cx); if (tick++ % 3 === 0) this.listen(cx); });
   }
 
   // Changed-file count of the focused terminal's repo (clicking it opens the floating Changes window).
@@ -103,12 +147,6 @@ export default class WorkspaceStatus extends View {
               notify({ title: `PR #${d.number} merged`, body: `${name} | ${d.title}`, level: "success", timeout: 0, action: { name: "mod.open", args: { name: "changes-float" } } });
             }
             this.states.set(d.url, d.state);
-            const wantsMe = Boolean(this.me) && d.state === "OPEN" && !d.isDraft && asked(d, this.me);
-            if (wantsMe && !first && !this.asked.has(d.url)) {
-              setShared("git-tab", "dashboard");
-              notify({ title: `Review requested: #${d.number}`, body: `${name} | ${d.title}`, level: "warning", timeout: 0, action: { name: "mod.open", args: { name: "changes-float" } } });
-            }
-            if (wantsMe) this.asked.add(d.url);
           }
           if (this.me || this.tries > 2) this.known.add(top);
           const list = all.filter((d) => d.state === "OPEN");
@@ -132,10 +170,63 @@ export default class WorkspaceStatus extends View {
       }));
       // Cached for the git window, so it opens with PRs already in.
       if (detail.size) setShared("pr-data", { at: Date.now(), repos: [...detail.values()] });
-      const reviews = [...detail.values()].flatMap((r) => r.open.filter((d) => d.needsMe).map((d) => ({ n: d.number, repo: r.name })));
       for (const [top, r] of repos) r.cwds = detail.get(top).cwds;
       const pr = [...repos.values()].filter((x) => x.cwds.some((c) => active.includes(c)) && (x.count > 0 || x.mine));
-      if (JSON.stringify(pr) !== JSON.stringify(this.pr) || JSON.stringify(reviews) !== JSON.stringify(this.reviews) || this.merged.length !== this.shownMerged) { this.pr = pr; this.reviews = reviews; this.shownMerged = this.merged.length; cx.notify(); }
+      if (JSON.stringify(pr) !== JSON.stringify(this.pr) || this.merged.length !== this.shownMerged) { this.pr = pr; this.shownMerged = this.merged.length; cx.notify(); }
+    });
+  }
+
+  // Inbox of the signed-in user across all repos (read only), every 60 s or when the window asks.
+  inbox(cx) {
+    const ask = shared("inbox-ask") || 0;
+    if (this.inboxBusy || (Date.now() - this.inboxAt < 60000 && ask <= this.inboxAt)) return;
+    this.inboxBusy = true; this.inboxAt = Date.now();
+    let finished = false;
+    // No setTimeout in mods: if the call hangs, surface it and allow a retry.
+    cx.timer.after(30000, () => { if (!finished) { setShared("inbox-error", "GitHub request did not return in 30 s"); this.inboxBusy = false; } });
+    cx.spawn(async (cx) => {
+      try {
+        if (!this.me) {
+          const r = await hc(["exec", "gh", "api", "user", "-q", ".login"]);
+          if (r.code !== 0) throw new Error((r.stderr || "gh not signed in").trim().split("\n")[0]);
+          this.me = r.stdout.trim(); setShared("git-me", this.me);
+        }
+        // Scope: shared("inbox-orgs") (default Beyond-One-AU only); an empty list means every org and personal repo.
+        const orgs = Array.isArray(shared("inbox-orgs")) ? shared("inbox-orgs") : ["Beyond-One-AU"];
+        const base = "is:pr is:open archived:false " + orgs.map((o) => `org:${o} `).join(""), me = this.me;
+        const r = await hc(["exec", "sh", "-c", 'exec gh api graphql -f query="$1" -f q1="$2" -f q2="$3" -f q3="$4" -f q4="$5" 2>&1', "sh", INBOX_QUERY.replace(/\s+/g, " "), `${base}review-requested:${me}`, `${base}reviewed-by:${me} -author:${me} -review-requested:${me}`, `${base}author:${me}`, `${base}${orgs.length ? "" : `involves:${me}`}`]);
+        if (r.code !== 0) throw new Error((r.stderr || r.stdout || "gh graphql failed").trim().split("\n")[0]);
+        const data = JSON.parse(r.stdout).data;
+        const rows = (k) => (data[k]?.nodes ?? []).filter((n) => n && n.repository).map((n) => inboxRow(n, me));
+        const inbox = { at: Date.now(), me, scope: orgs.join(","), review: rows("a"), waiting: rows("b"), mine: rows("c"), all: rows("d") };
+        // Toast for each new review request after the first scan (which only records).
+        for (const d of inbox.review) {
+          if (d.draft || d.covered || this.asked.has(d.url)) continue;
+          this.asked.add(d.url);
+          if (this.inboxSeen) {
+            setShared("git-tab", "inbox");
+            notify({ title: `Review requested: #${d.n}`, body: `${d.repo.split("/")[1]} | ${d.title}`, level: "warning", timeout: 0, action: { name: "mod.open", args: { name: "changes-float" } } });
+          }
+        }
+        // Toast when one of your PRs becomes ready to merge (approved, CI not failing); risky ones ask for a second look.
+        for (const d of inbox.mine) {
+          if (!readyOf(d) || this.readyAnn.has(d.url)) continue;
+          this.readyAnn.add(d.url);
+          if (this.inboxSeen) {
+            const second = d.risk && d.appr.length < 2;
+            setShared("git-tab", "inbox");
+            notify({ title: `PR #${d.n} ready to merge`, body: `${d.repo.split("/")[1]} | ${d.title}${second ? ` | touches ${d.risk}: consider a second approval` : ""}`, level: second ? "warning" : "success", timeout: 0, action: { name: "mod.open", args: { name: "changes-float" } } });
+          }
+        }
+        this.inboxSeen = true;
+        setShared("inbox", inbox); setShared("inbox-error", "");
+        const unc = inbox.review.filter((d) => !d.draft && !d.covered).sort((x, y) => Date.parse(x.createdAt) - Date.parse(y.createdAt));
+        const counts = { review: unc.length, oldest: unc[0]?.createdAt ?? "", rerev: inbox.waiting.filter((d) => d.flag).length, ready: inbox.mine.filter(readyOf).length, fix: inbox.mine.filter((d) => !d.draft && (d.decision === "CHANGES_REQUESTED" || d.ci === "fail")).length };
+        if (JSON.stringify(counts) !== JSON.stringify(shared("inbox-counts"))) setShared("inbox-counts", counts); // header chips (tabs-tm)
+        const reviews = inbox.review.filter((d) => !d.draft && !d.covered).map((d) => ({ n: d.n, repo: d.repo })), rerev = inbox.waiting.filter((d) => d.flag).length, ready = inbox.mine.filter(readyOf).length;
+        if (JSON.stringify(reviews) !== JSON.stringify(this.reviews) || rerev !== this.rerev || ready !== this.ready) { this.reviews = reviews; this.rerev = rerev; this.ready = ready; cx.notify(); }
+      } catch (e) { setShared("inbox-error", String(e).replace(/^Error: /, "")); }
+      finished = true; this.inboxBusy = false;
     });
   }
 
@@ -178,7 +269,6 @@ export default class WorkspaceStatus extends View {
           return div().id(`pr-${i}`).cursor_pointer().text_color(color).on_click(() => this.showGit("open")).child(text);
         }))
         .when(this.pr.length > 3, e => e.child(div().child(`+${this.pr.length - 3}`)))))
-      .when(this.reviews.length > 0, el => el.child(div().id("reviews").cursor_pointer().text_color(t.blocked).on_click(() => this.showGit("dashboard")).child(`${this.reviews.length} to review`)))
       .when(fresh.length > 0, el => el.child(div().id("merged").cursor_pointer().text_color(t.done).on_click(() => { this.showGit("merged"); }).child(`✓ ${fresh.length} merged: ${fresh.slice(-2).map(m => `#${m.n}`).join(" ")}`)))
       .when(this.serving.length > 0, el => el.child(h_flex().gap(8).items_center().text_color(t.working)
         .children(this.serving.slice(0, 4).map(v => div().child(`▲ :${v.port} ${v.cwd.split("/").pop()}`)))

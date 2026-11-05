@@ -93,9 +93,8 @@ export default class Parked extends View {
                     .rounded(7)
                     .bg(i === this.at ? t.selected : "#00000000")
                     .hover((s) => s.bg(t.hover))
-                    .text_color(t.foreground)
                     .child(div().w(56).flex_none().text_size(12).text_color(t.accent).child(r.address))
-                    .child(div().flex_1().min_w(0).truncate().child(label(r)))
+                    .child(div().flex_1().min_w(0).truncate().text_color(i === this.at ? t.foreground : t.muted).child(label(r)))
                     .child(div().max_w(240).truncate().text_size(11).text_color(t.dim).child((r.cwd ?? "").replace(/^\/home\/[^/]+/, "~"))),
                 )
               : [div().text_color(t.dim).child("Nothing is parked.")],
