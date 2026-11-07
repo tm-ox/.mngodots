@@ -519,6 +519,10 @@ export default class Changes extends View {
     this.rloading = true;
     cx.spawn(async (cx) => {
       try {
+        // Open each shared ssh connection once before the parallel git runs, so ControlMaster has a socket to reuse and the agent confirms once per host, not once per repo.
+        const hosts = new Set(["git@github.com"]);
+        for (const p of this.repoList()) { const m = /^([\w.-]+):\//.exec(p); if (m) hosts.add(m[1]); }
+        await Promise.all([...hosts].map((h) => exec("sh", ["-c", '[ -f "$HOME/.keychain/$(uname -n)-sh" ] && . "$HOME/.keychain/$(uname -n)-sh"; ssh -o BatchMode=yes -o ConnectTimeout=8 -T "$1" true </dev/null >/dev/null 2>&1; true', "sh", h]).catch(() => {})));
         await Promise.all(this.repoList().map(async (path) => {
           try {
             const r = await this.repoShell(path, (fetch ? "git fetch --quiet 2>/dev/null; " : "") + "git --no-optional-locks status -sb --untracked-files=all 2>&1");
