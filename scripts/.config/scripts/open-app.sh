@@ -6,4 +6,5 @@ case "$url" in
   http://*|https://*|file://*) ;;
   *) url="http://$url" ;;
 esac
-exec vivaldi --profile-directory="${2:-Beyond}" --app="$url"
+# Separate user-data-dir: own process, so it never blocks or hijacks normal Vivaldi profile launches.
+exec vivaldi --user-data-dir="$HOME/.config/vivaldi-preview" --no-first-run --app="$url"
