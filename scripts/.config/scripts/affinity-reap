@@ -1,0 +1,23 @@
+#!/bin/sh
+# Kill Affinity.exe processes that have had no compositor window for >=40 s.
+# Affinity does not exit after its window closes under Wine; the leftover blocks later launches
+# (AlreadyRunning / silent file handoff failures) and keeps the wineserver alive.
+# Skips (does nothing) if the compositor can't be queried. Use --dry to only print.
+STATE="${XDG_RUNTIME_DIR:-/tmp}/affinity-reap.state"
+S=$(ls -t /run/user/$(id -u)/mango-*.sock 2>/dev/null | head -1)
+[ -n "$S" ] || exit 0
+clients=$(MANGO_INSTANCE_SIGNATURE="$S" mmsg get all-clients 2>/dev/null) || exit 0
+[ -n "$clients" ] || exit 0
+now=$(date +%s); : >> "$STATE"; new=$(mktemp)
+for pid in $(pgrep -x Affinity.exe); do
+  age=$(ps -o etimes= -p "$pid" | tr -d ' ')
+  [ "${age:-0}" -ge 90 ] || { continue; }
+  if printf '%s' "$clients" | grep -q "\"pid\":$pid,"; then continue; fi
+  first=$(awk -v p="$pid" '$1==p{print $2}' "$STATE"); first=${first:-$now}
+  echo "$pid $first" >> "$new"
+  if [ "$1" = "--now" ] || [ $((now - first)) -ge 40 ]; then
+    echo "reap $pid (windowless $((now - first))s)"
+    [ "$1" = "--dry" ] || { kill -TERM "$pid"; sleep 5; kill -9 "$pid" 2>/dev/null; }
+  fi
+done
+mv "$new" "$STATE"

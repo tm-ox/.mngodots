@@ -11,6 +11,71 @@ const keyHints = (text, t) => h_flex().gap(14).items_center().min_w(0).overflow_
   return h_flex().gap(6).items_center().flex_none().child(keyChip(w.slice(0, n).join(" "), t)).when(Boolean(label), (e) => e.child(div().text_size(12).text_color(t.dim).child(label)));
 }));
 
+// Help panel (`?`): every key by tab/state; the header only shows the core ones. Keep in sync with the key handlers in render, reposKey and detailKey.
+const HELP = [
+  ["Anywhere", [
+    ["1 – 6 · Tab · Shift Tab", "Switch tab: Inbox, Repo, Changes, PRs, Issues, Backups; Tab cycles."],
+    ["P", "Pin the repo to this tab (or space). Not while typing."],
+    ["Esc", "Cancel the open prompt or leave the text field."],
+    ["?", "Show or hide this help. Not while typing."],
+  ]],
+  ["Changes", [
+    ["↑ ↓ · J K", "Choose the file whose diff shows (Ctrl J K also while typing the commit message)."],
+    ["Enter · e", "Edit the open file in vim."],
+  ]],
+  ["Inbox", [
+    ["↑ ↓ · J K", "Move the selection."],
+    ["Enter", "Open the PR."],
+    ["B", "Open in the browser."],
+    ["A", "Show all open PRs, or only those awaiting review."],
+    ["O", "Cycle the org scope."],
+    ["x", "Clear the repo filter (set from the summary cards)."],
+    ["R", "Refresh."],
+  ]],
+  ["Repo (dashboard)", [
+    ["↑ ↓ ← → · J K H L", "Move the selection."],
+    ["Enter", "Run the selected item's action."],
+    ["B", "Open the selected item in the browser."],
+    ["R", "Refresh PRs and repo info."],
+  ]],
+  ["PRs (open, merged)", [
+    ["↑ ↓ · J K", "Move the selection."],
+    ["Enter", "Open the PR."],
+    ["B", "Open in the browser."],
+    ["R", "Refresh."],
+  ]],
+  ["Issues", [
+    ["↑ ↓ · J K", "Move the selection."],
+    ["Enter", "Open the issue."],
+    ["B", "Open in the browser."],
+    ["N", "New issue: title, Enter, description, Enter to create. Esc cancels."],
+    ["F", "Filter: all, assigned, created."],
+    ["R", "Refresh."],
+    ["Backspace · ← · H", "In an issue: back to the list."],
+  ]],
+  ["Backups (repos)", [
+    ["↑ ↓ · J K", "Move the selection."],
+    ["Enter", "Commit and push (asks for a message, Enter confirms)."],
+    ["L", "Pull."],
+    ["O", "Open the repo."],
+    ["N", "Add a repo."],
+    ["D", "Remove the repo from the list."],
+    ["R", "Refresh status."],
+    ["Backspace · Esc", "Cancel the prompt."],
+  ]],
+  ["PR detail", [
+    ["Backspace · ← · H", "One step back: close prompt, diff to overview, overview to list."],
+    ["D", "Toggle diff and overview."],
+    ["A", "Approve (Enter confirms)."],
+    ["C", "Comment (type, Enter sends)."],
+    ["X", "Request changes (type, Enter sends)."],
+    ["M", "Merge; 1 merge, 2 squash, 3 rebase, Enter confirms."],
+    ["B", "Open in the browser."],
+    ["N · P", "Next or previous PR of the inbox. Only when opened from the Inbox."],
+  ]],
+];
+const caption = (text, t) => div().text_size(10).font_medium().text_color(t.accent).child(text.toUpperCase());
+
 // Column captions above a list: cols = [[text, width | null for flex, "right"?]], widths match the rows below.
 const colHead = (cols, t, px = 10) => h_flex().w_full().flex_none().px(px).gap(10).items_center().text_size(10).font_medium().text_color(t.accent)
   .children(cols.map(([text, w, right]) => { const e = div().truncate().child(String(text).toUpperCase()); if (w) e.w(w).flex_none(); else e.flex_1().min_w(0); return right ? e.text_right() : e; }));
@@ -116,7 +181,7 @@ export default class Changes extends View {
     this.loadDraftIndex(cx);
     cx.timer.every(30000, (cx) => this.loadDraftIndex(cx));
     cx.timer.every(3000, (cx) => { const b = shared("inbox"), er = shared("inbox-error") || ""; if ((b && b.at !== this.inb?.at) || er !== (this.inbErr ?? "")) { if (b) this.inb = b; this.inbErr = er; cx.notify(); } });
-    this.idet = null; this.issues = null; this.iAt = 0; this.iLoading = false; this.iError = null; this.isel = 0; this.ifilter = "all"; this.inew = null;
+    this.helpOpen = false; this.idet = null; this.issues = null; this.iAt = 0; this.iLoading = false; this.iError = null; this.isel = 0; this.ifilter = "all"; this.inew = null;
     this.tInput = InputState.new({ placeholder: "Issue title, Enter for description" });
     this.bInput = InputState.new({ placeholder: "Description (optional), Enter to create" });
     this.tInput.on("submit", (_e, cx) => { if (this.inew && (this.tInput.value() ?? "").trim()) { this.inew.stage = "body"; this.bInput.focus(); cx.notify(); } });
@@ -192,6 +257,7 @@ export default class Changes extends View {
   }
 
   setTab(tab, cx) {
+    this.helpOpen = false;
     if (tab === this.tab) return;
     this.tab = tab; this.sel = 0; this.dsel = -1; this.detail = null; this.idet = null;
     this.loadPrs(cx);
@@ -388,8 +454,26 @@ export default class Changes extends View {
     if (key() !== this.context) this.refresh(cx);
     const t = theme(), add = this.files.reduce((n, f) => n + f.add, 0), del = this.files.reduce((n, f) => n + f.del, 0);
     const enabled = Boolean(this.message.trim() && this.root && !this.busy && !this.loading);
+    const hint = this.helpOpen ? ""
+      : this.detail ? (this.detail.fromInbox ? "N P next/prev PR · " : "") + "D diff · A approve · C comment · X request changes · M merge · B browser"
+      : this.tab === "changes" ? "Enter edit in vim"
+      : this.tab === "inbox" ? "B browser · A all open PRs · O scope · R refresh"
+      : this.tab === "dashboard" ? "B browser · R refresh"
+      : this.tab === "open" || this.tab === "merged" ? "B browser · R refresh"
+      : this.tab === "issues" ? (this.inew ? "Enter next / create · Esc cancel" : this.idet ? "B browser" : "N new · F filter: " + this.ifilter + " · B browser · R refresh")
+      : this.tab === "repos" ? (this.rask ? "Enter confirm · Backspace cancel" : "Enter commit + push · L pull · O open · N add · D remove · R refresh")
+      : "";
+    const helpPanel = (e) => e.child(h_flex().flex_1().min_h(0).items_start().gap(28).p(18).children([HELP.slice(0, 3), HELP.slice(3, 6), HELP.slice(6)].map((col, ci) =>
+      v_flex().id(`help-${ci}`).flex_1().min_w(0).h_full().min_h(0).gap(14).overflow_y_scrollbar().children(col.map(([title, rows]) =>
+        v_flex().gap(6).flex_none().child(caption(title, t)).children(rows.map(([keys, text]) =>
+          h_flex().gap(10).items_start().child(div().w(96).flex_none().flex().flex_wrap().gap(4).children(keys.split(" · ").map((kk) => keyChip(kk, t))))
+            .child(div().flex_1().min_w(0).text_size(12).text_color(t.muted).child(text)))))))));
     return v_flex().id("changes").size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(t.border).text_color(t.foreground).text_size(13).track_focus(this.handle)
       .on_key_down((e, cx) => {
+        if (!this.typing) {
+          if (this.helpOpen) { this.helpOpen = false; cx.notify(); if (e.key !== "escape" && e.key !== "backspace") { cx.stop_propagation(); return; } }
+          else if (e.key === "?" || (e.key === "/" && e.modifiers?.shift)) { this.helpOpen = true; cx.stop_propagation(); cx.notify(); return; }
+        }
         if (this.detail && this.detailKey(e, cx)) { cx.stop_propagation(); return; }
         if (this.tab === "repos" && !this.detail && this.reposKey(e, cx)) { cx.stop_propagation(); return; }
         if (e.key === "escape" && this.inew) { this.cancelIssue(cx); cx.stop_propagation(); return; }
@@ -481,22 +565,20 @@ export default class Changes extends View {
               .child(div().px(8).flex().items_center().child(text)));
         }))
         .child(div().flex_1())
-        .when(!this.detail && this.tab === "changes", (e) => e.child(keyHints("↑↓ files · Enter edit in vim · Esc", t).px(8)).child(div().px(4).text_size(11).text_color(t.ansi2).child(`+${add}`)).child(div().px(4).text_size(11).text_color(t.ansi1).child(`−${del}`)))
-        .when(Boolean(this.detail), (e) => e.child(keyHints("Backspace back · " + (this.detail?.fromInbox ? "N P next/prev PR · " : "") + "D diff · A approve · C comment · X request changes · M merge · B browser", t).px(8)))
-        .when(!this.detail && this.tab === "inbox", (e) => e.child(keyHints("↑↓ select · Enter open PR · B browser · A all open PRs · O scope · R refresh · Esc", t).px(8)))
-        .when(!this.detail && this.tab === "dashboard", (e) => e.child(keyHints("arrows/J K select · Enter open · B browser · R refresh · Esc", t).px(8)))
-        .when(!this.detail && (this.tab === "open" || this.tab === "merged"), (e) => e.child(keyHints("↑↓ select · Enter open PR · B browser · R refresh · Esc", t).px(8)))
-        .when(!this.detail && this.tab === "issues", (e) => e.child(keyHints(this.inew ? "Enter next / create · Esc cancel" : this.idet ? "Backspace back · B browser · Esc" : "↑↓ select · Enter open · B browser · N new · F filter: " + this.ifilter + " · R refresh · Esc", t).px(8)))
-        .when(!this.detail && this.tab === "repos", (e) => e.child(keyHints(this.rask ? "Enter confirm · Backspace cancel" : "↑↓ select · Enter commit + push · L pull · O open · R refresh · N add · D remove · Esc", t).px(8)))
+        .when(Boolean(hint), (e) => e.child(keyHints(hint, t).px(8)))
+        .when(!this.helpOpen && !this.detail && this.tab === "changes", (e) => e.child(div().px(4).text_size(11).text_color(t.ansi2).child(`+${add}`)).child(div().px(4).text_size(11).text_color(t.ansi1).child(`−${del}`)))
+        .when(this.helpOpen, (e) => e.child(div().text_size(12).text_color(t.dim).mr(6).child("back")))
+        .when(!this.typing, (e) => e.child(div().pl(this.helpOpen ? 0 : 14).pr(4).flex().items_center().child(keyChip("?", t))))
         .child(div().id("pin").h_full().px(10).flex().items_center().cursor_pointer().text_size(11).text_color(pinOf() ? t.accent : t.dim).hover((x) => x.text_color(pinOf() ? t.accent : t.muted)).on_click((_e, cx) => this.togglePin(cx))
           .child(pinOf() ? `Pinned · ${pinOf()[0].replace(/^\/home\/[^/]+/, "~")}` : "Pin repo (P)")))
-      .when(Boolean(this.detail), (e) => e.child(this.detailBody(t)))
-      .when(!this.detail && this.tab === "inbox", (e) => e.child(this.inboxBody(t)))
-      .when(!this.detail && this.tab === "dashboard", (e) => e.child(this.dashBody(t)))
-      .when(!this.detail && (this.tab === "open" || this.tab === "merged"), (e) => e.child(this.prBody(t)))
-      .when(!this.detail && this.tab === "changes", (e) => e.child(this.changesBody(t, enabled)))
-      .when(!this.detail && this.tab === "repos", (e) => e.child(this.reposBody(t)))
-      .when(!this.detail && this.tab === "issues", (e) => e.child(this.issuesBody(t)))
+      .when(this.helpOpen, helpPanel)
+      .when(!this.helpOpen && Boolean(this.detail), (e) => e.child(this.detailBody(t)))
+      .when(!this.helpOpen && !this.detail && this.tab === "inbox", (e) => e.child(this.inboxBody(t)))
+      .when(!this.helpOpen && !this.detail && this.tab === "dashboard", (e) => e.child(this.dashBody(t)))
+      .when(!this.helpOpen && !this.detail && (this.tab === "open" || this.tab === "merged"), (e) => e.child(this.prBody(t)))
+      .when(!this.helpOpen && !this.detail && this.tab === "changes", (e) => e.child(this.changesBody(t, enabled)))
+      .when(!this.helpOpen && !this.detail && this.tab === "repos", (e) => e.child(this.reposBody(t)))
+      .when(!this.helpOpen && !this.detail && this.tab === "issues", (e) => e.child(this.issuesBody(t)))
   }
 
   // ---- Repos tab: a saved list of repos (shared("git-repos")) with status, commit + push and pull ----

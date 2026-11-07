@@ -1,0 +1,33 @@
+/* tm herdr palette for the SSH askpass dialog only (loaded via XDG_CONFIG_HOME in ssh-askpass-confirm.sh). Values from herdr-app themes/tm-dk.json. */
+@define-color accent_color #ff9e64;
+@define-color accent_bg_color #ff9e64;
+@define-color accent_fg_color #1e222e;
+@define-color window_bg_color #1e222e;
+@define-color window_fg_color #cccac2;
+@define-color view_bg_color #252a35;
+@define-color view_fg_color #cccac2;
+@define-color headerbar_bg_color #1e222e;
+@define-color headerbar_fg_color #cccac2;
+@define-color headerbar_border_color #2b303c;
+@define-color headerbar_backdrop_color #1e222e;
+@define-color dialog_bg_color #1e222e;
+@define-color dialog_fg_color #cccac2;
+@define-color popover_bg_color #1e222e;
+@define-color popover_fg_color #cccac2;
+@define-color card_bg_color #252a35;
+@define-color card_fg_color #cccac2;
+@define-color destructive_bg_color #f18779;
+@define-color error_bg_color #f18779;
+
+window, window.background, dialog { background: #1e222e; color: #cccac2; border: 1px solid #2b303c; border-radius: 10px; }
+headerbar { background: #1e222e; box-shadow: none; border-bottom: 1px solid #2b303c; min-height: 30px; }
+headerbar .title { font-size: 12px; font-weight: 500; color: #ff9e64; }
+label { color: #cccac2; font-size: 13px; }
+button { background: #252a35; color: #9a9a98; border: 1px solid #2b303c; border-radius: 7px; box-shadow: none; text-shadow: none; min-height: 26px; padding: 2px 16px; }
+button label { color: inherit; font-size: 13px; font-weight: 500; }
+button:hover { background: #2b303c; color: #cccac2; }
+button:focus, button:focus-visible { outline: none; border-color: #ff9e64; color: #ff9e64; }
+button.suggested-action, button.default { background: #252a35; color: #ff9e64; border: 1px solid #ff9e64; }
+button.suggested-action:hover, button.default:hover { background: #2b303c; }
+entry, entry.password { background: #252a35; color: #cccac2; border: 1px solid #2b303c; border-radius: 9px; box-shadow: none; }
+entry:focus-within { border-color: #ff9e64; }

@@ -13,13 +13,31 @@ const keyHints = (text, t) => h_flex().gap(14).items_center().min_w(0).overflow_
   const label = w.slice(n).join(" ");
   return h_flex().gap(6).items_center().flex_none().child(keyChip(w.slice(0, n).join(" "), t)).when(Boolean(label), (e) => e.child(div().text_size(12).text_color(t.dim).child(label)));
 }));
-const header = (title, hint, t) => h_flex().h(30).flex_none().pr(10).items_center().border_b(1).border_color(t.border)
+const header = (title, hint, t, helpOpen) => h_flex().h(30).flex_none().pr(10).items_center().border_b(1).border_color(t.border)
   .child(div().h_full().pl(12).pr(6).flex().items_center().flex_none().text_size(12).font_medium().text_color(t.accent).child(title))
-  .child(div().flex_1()).child(keyHints(hint, t));
+  .child(div().flex_1())
+  .when(Boolean(hint), (e) => e.child(keyHints(hint, t)))
+  .when(helpOpen, (e) => e.child(div().text_size(12).text_color(t.dim).mr(6).child("back")))
+  .child(div().pl(helpOpen ? 0 : 14).flex().items_center().child(keyChip("?", t)));
+
+const HELP = [
+  ["Parked list", [
+    ["↑ ↓ · J K", "Move the selection."],
+    ["Enter", "Bring the terminal back as a split right of the focused pane."],
+    ["T", "Bring it back as a new tab."],
+    ["P", "Peek at it without moving it."],
+    ["X · Delete", "Kill it, after a confirmation."],
+  ]],
+  ["Anywhere", [
+    ["?", "This help. Any key closes it."],
+    ["Esc", "Closes this dialog."],
+  ]],
+];
 
 export default class Parked extends View {
   init(_props, cx) {
     this.at = 0;
+    this.helpOpen = false;
     this.handle = cx.focus_handle();
     this.handle.focus();
     cx.timer.after(300, () => this.handle.focus());
@@ -46,6 +64,8 @@ export default class Parked extends View {
         const k = e.key;
         const r = rows[this.at];
         if (k === "escape") return this.close();
+        if (this.helpOpen) { this.helpOpen = false; cx.stop_propagation(); cx.notify(); return; }
+        if (k === "?" || (k === "/" && e.modifiers?.shift)) { this.helpOpen = true; cx.stop_propagation(); cx.notify(); return; }
         if ((k === "down" || k === "j") && rows.length) this.at = (this.at + 1) % rows.length;
         else if ((k === "up" || k === "k") && rows.length) this.at = (this.at + rows.length - 1) % rows.length;
         else if (k === "enter" && r) {
@@ -72,8 +92,14 @@ export default class Parked extends View {
       .border_color(t.border)
       .bg(t.background)
       .text_size(13)
-      .child(header("Parked terminals", "↑↓ select · Enter split · T tab · P peek · X kill · Esc", t))
-      .child(
+      .child(header("Parked terminals", this.helpOpen ? "" : "Enter split · T tab · P peek · X kill", t, this.helpOpen))
+      .when(this.helpOpen, (e) => e.child(
+        v_flex().id("pk-help").flex_1().min_h(0).p(18).gap(14).overflow_y_scrollbar().children(HELP.map(([title, rows]) =>
+          v_flex().gap(6).flex_none().child(div().text_size(10).font_medium().text_color(t.accent).child(title.toUpperCase())).children(rows.map(([keys, text]) =>
+            h_flex().gap(10).items_start().child(div().w(110).flex_none().flex().flex_wrap().gap(4).children(keys.split(" · ").map((kk) => keyChip(kk, t))))
+              .child(div().flex_1().min_w(0).text_size(12).text_color(t.muted).child(text)))))),
+      ))
+      .when(!this.helpOpen, (e) => e.child(
         v_flex()
           .flex_1()
           .min_h(0)
@@ -99,6 +125,6 @@ export default class Parked extends View {
                 )
               : [div().text_color(t.dim).child("Nothing is parked.")],
           ),
-      );
+      ));
   }
 }

@@ -2,7 +2,8 @@
 // Bookmarks: Enter / Go starts one in the background (a hidden herdr-core terminal running your interactive shell, so PATH
 // and version managers apply). Output shows the live output in a peek (with keep-as-tab); Stop ends it.
 // Running rows: Enter opens http://localhost:<port>, r restarts, s stops, b bookmarks it.
-// Keys: Up/Down or j/k move, n new bookmark, o output, d remove bookmark, Esc closes. Styling mirrors file-find / changes-float.
+// Keys: Up/Down or j/k move, n new bookmark, o output, d remove bookmark, Esc closes. The header shows only the core
+// actions; ? opens a help panel with every key (any key closes it). Styling mirrors file-find / changes-float.
 const DEFAULT_CMD = "npm run dev";
 
 import { View, div } from "gpui-kit";
@@ -56,11 +57,41 @@ const short = (l) => {
 const age = (s) => (s >= 86400 ? `${Math.floor(s / 86400)}d` : s >= 3600 ? `${Math.floor(s / 3600)}h` : s >= 60 ? `${Math.floor(s / 60)}m` : `${s}s`);
 const sleep = (ms) => exec("sleep", [String(ms / 1000)]);
 
+// Help panel: sections of [keys, explanation]; keys separated by " · " become separate chips.
+const HELP = [
+  ["List", [
+    ["j k · ↑ ↓", "Move the selection."],
+    ["n", "New bookmark (opens the form, folder preset to the focused terminal's)."],
+    ["?", "This help. Any key closes it."],
+    ["Esc", "Close the mod."],
+  ]],
+  ["Bookmark rows", [
+    ["Enter", "Stopped: start it (Go). Running: open its first port in the browser."],
+    ["o", "Show the live output of the running command in a peek."],
+    ["r", "Restart: stop it, wait, start it again."],
+    ["s", "Stop it."],
+    ["d", "Remove the bookmark (does not stop a running server)."],
+  ]],
+  ["Running server rows", [
+    ["Enter", "Open http://localhost:<port> in the browser."],
+    ["r", "Restart by re-running its command line. Press twice to confirm."],
+    ["s", "Stop the process."],
+    ["b", "Bookmark it (opens the form, prefilled with its project folder)."],
+  ]],
+  ["Bookmark form", [
+    ["Enter", "Next field; on the last field, save the bookmark."],
+    ["Tab", "Switch to the next field (name, command, folder)."],
+    ["Esc", "Cancel the form."],
+    ["?", "Not available here: it is typed into the field."],
+  ]],
+];
+
 export default class DevServers extends View {
   init(_props, cx) {
     this.listeners = [];
     this.loaded = false;
     this.at = 0;
+    this.helpOpen = false;
     this.form = null; // { fields: [InputState x3], at }
     this.handle = cx.focus_handle();
     this.handle.focus();
@@ -253,6 +284,8 @@ export default class DevServers extends View {
       else if (k === "tab") { this.focusField((this.form.at + 1) % 3); cx.stop_propagation(); }
       return;
     }
+    if (this.helpOpen) { this.helpOpen = false; cx.stop_propagation(); cx.notify(); return; }
+    if (k === "?" || (k === "/" && e.modifiers?.shift)) { this.helpOpen = true; cx.stop_propagation(); cx.notify(); return; }
     const items = this.flat(), it = items[this.at];
     if (k === "escape") return closeOverlay(props().overlay);
     if (k === "down" || k === "j") this.at = Math.min(items.length - 1, this.at + 1);
@@ -319,9 +352,12 @@ export default class DevServers extends View {
     if (this.loaded && !rows.length) nodes.push(div().px(10).py(8).text_size(12).text_color(t.dim).child(this.error ?? "Nothing else is listening."));
     if (!this.loaded) nodes.push(div().px(10).py(8).text_size(12).text_color(t.dim).child("Looking…"));
 
-    const hint = this.form ? [["Enter", "next"], ["Tab", "switch"], ["Esc", "cancel"]]
-      : sel?.kind === "bm" ? [["Enter", "go / open"], ["o", "output"], ["r", "restart"], ["s", "stop"], ["d", "remove"], ["n", "new"], ["Esc", "close"]]
-      : [["Enter", "open"], ["r", "restart"], ["s", "stop"], ["b", "bookmark"], ["n", "new"], ["Esc", "close"]];
+    const caption = (text) => div().text_size(10).font_medium().text_color(t.accent).child(text.toUpperCase());
+    // The form keeps Esc: help isn't reachable there.
+    const hint = this.helpOpen ? []
+      : this.form ? [["Enter", "next"], ["Tab", "switch"], ["Esc", "cancel"]]
+      : sel?.kind === "bm" ? [["o", "output"], ["r", "restart"], ["s", "stop"], ["d", "remove"]]
+      : [["r", "restart"], ["s", "stop"], ["b", "bookmark"]];
 
     return v_flex().id("devservers").track_focus(this.handle).on_key_down((e, cx) => this.key(e, cx))
       .size_full().min_h(0).rounded(10).overflow_hidden().border_1().border_color(t.border).bg(t.background).text_size(13)
@@ -331,9 +367,16 @@ export default class DevServers extends View {
           .child(div().id("ds-new").h_full().pl(12).pr(6).flex().items_center().cursor_pointer().text_size(12).text_color(t.dim).hover((x) => x.text_color(t.muted))
             .on_click((_e, cx) => this.openForm(null, cx)).child(h_flex().gap(6).items_center().child(chip("n")).child("New bookmark")))
           .child(div().flex_1().min_w(0).truncate().px(10).text_size(12).text_color(t.dim).child(`${this.listeners.length} listening · ${bms.length} bookmarked`))
-          .child(hints(hint)),
+          .when(hint.length > 0, (e) => e.child(hints(hint)))
+          .when(this.helpOpen, (e) => e.child(div().text_size(12).text_color(t.dim).mr(6).child("back")))
+          .when(!this.form, (e) => e.child(div().pl(this.helpOpen ? 0 : 14).flex().items_center().child(chip("?")))),
       )
-      .child(
+      .when(this.helpOpen, (e) => e.child(h_flex().flex_1().min_h(0).items_start().gap(28).p(18).children([HELP.slice(0, 2), HELP.slice(2)].map((col, ci) =>
+        v_flex().id(`help-${ci}`).flex_1().min_w(0).h_full().min_h(0).gap(14).overflow_y_scrollbar().children(col.map(([title, rows]) =>
+          v_flex().gap(6).flex_none().child(caption(title)).children(rows.map(([keys, text]) =>
+            h_flex().gap(10).items_start().child(div().w(110).flex_none().flex().flex_wrap().gap(4).children(keys.split(" · ").map((kk) => chip(kk))))
+              .child(div().flex_1().min_w(0).text_size(12).text_color(t.muted).child(text))))))))))
+      .when(!this.helpOpen, (e) => e.child(
         v_flex().flex_1().min_h(0).p(14).gap(10)
           .when(Boolean(this.form), (e) => e.child(
             h_flex().gap(8).items_center().flex_none()
@@ -346,6 +389,6 @@ export default class DevServers extends View {
               .child(act("pick-browse", "Browse…", (cx) => this.browse(cx), t.accent))
               .children(this.suggestions().map((d, n) => act(`pick-${n}`, tilde(d), (cx) => this.setFolder(d, cx))))))
           .child(v_flex().flex_1().min_h(0).gap(1).overflow_y_scrollbar().children(nodes)),
-      );
+      ));
   }
 }

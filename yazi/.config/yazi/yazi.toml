@@ -11,7 +11,7 @@ play = [{ run = 'mpv %s', orphan = true, for = "unix" }]
 open = [{ run = 'xdg-open %s', desc = "Open" }]
 zed_dir = [{ run = 'zeditor %s', orphan = true, desc = "Open directory with Zed" }]
 bitwig = [{ run = 'bitwig-studio %s', orphan = true }]
-aff = [{ run = 'WINEPREFIX="$HOME/Applications/affinity-suite" "$HOME/.local/share/lutris/runners/wine/ElementalWarriorWine-x86_64/bin/wine" start /unix %s', orphan = true, desc = "Affinity" }]
+aff = [{ run = '"$HOME/.local/bin/affinity-open" %s', orphan = true, desc = "Affinity" }]
 extract = [{ run = '7z x %s1 -o%d1', block = true, desc = "Extract archive" }]
 office = [{ run = 'libreoffice %s', orphan = true, desc = "LibreOffice" }]
 

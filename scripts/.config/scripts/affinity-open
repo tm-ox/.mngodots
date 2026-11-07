@@ -1,0 +1,22 @@
+#!/bin/sh
+# Open a file or affinity:// URL in Affinity (Lutris runner, affinity-suite prefix).
+# A second launch hands off to the running instance via Affinity's own IPC.
+# Launching while Affinity is still starting leaves a stuck extra process, so wait for it to finish starting.
+export WINEPREFIX="$HOME/Applications/affinity-suite" WINEDEBUG=-all
+WINE="$HOME/.local/share/lutris/runners/wine/ElementalWarriorWine-x86_64/bin/wine"
+EXE='C:\Program Files\Affinity\Affinity\Affinity.exe'
+LOG="${XDG_RUNTIME_DIR:-/tmp}/affinity-cb.log"
+echo "$(date +%T) $*" >> "$LOG"
+exec 9>${XDG_RUNTIME_DIR:-/tmp}/affinity-open.lock; flock 9
+"$HOME/.config/scripts/affinity-reap" --now >/dev/null 2>&1
+for a in "$@"; do
+  case "$a" in
+    affinity://*) arg="$a" ;;
+    *) arg="$("$WINE" winepath -w "$(realpath "$a")" 2>/dev/null)" ;;
+  esac
+  # youngest running instance (the one most likely still starting)
+  age=$(ps -C Affinity.exe -o etimes= 2>/dev/null | sort -n | head -1 | tr -d ' ')
+  if [ -n "$age" ] && [ "$age" -lt 60 ]; then sleep $((60 - age)); fi
+  setsid "$WINE" "$EXE" "$arg" >>"$LOG" 2>&1 </dev/null 9>&- &
+  sleep 3
+done

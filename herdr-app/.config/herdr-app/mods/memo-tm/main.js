@@ -2,7 +2,7 @@
 // All data goes through `rcal api` (JSON in, JSON out), so the mod, the terminal editor (`rcal edit`) and agents share one set of rules.
 // Ctrl H / Ctrl L move left and right between the list, the form and the date picker (picker: H J K L day, [ ] hour, , . minute, Enter done, c cancel, 0 no time, x clear; Ctrl H closes it keeping the value).
 // Right pane is a reader first: Ctrl L from the list focuses it (J K scroll, Space page, g G ends), Enter / e edits, Ctrl H leaves edit, then the reader.
-// Keys: J K move, Enter edit, n new note, t y w new task in TM / YNK / WRK, x done, d delete (twice), a show done, / search, 1 2 3 tabs.
+// Keys: J K move, Enter edit, n new note, t y w new task in TM / YNK / WRK, x done, d delete (twice), a show done, / search, 1-5 tabs, b flips task/note <-> bookmark.
 // In a text field: Tab / Shift Tab next field, Ctrl H back to the list. Esc closes the whole mod (the host takes it), so it is never the way back.
 // Text edits save by themselves 0.7 s after you stop typing; chips save at once. A save checks the server's etag.
 import { View, div } from "gpui-kit";
@@ -11,13 +11,14 @@ import { exec, theme, props, closeOverlay, home, shared, setShared } from "herdr
 
 const PRIOS = [["None", 0], ["High", 1], ["Medium", 5], ["Low", 9]];
 const STATUSES = [["Open", "NEEDS-ACTION"], ["In progress", "IN-PROCESS"], ["Done", "COMPLETED"], ["Cancelled", "CANCELLED"]];
-const CATS = ["inbox", "todo", "idea", "reference", "agent"];
+const CATS = ["inbox", "todo", "idea", "reference", "agent", "tm", "ynk", "wrk"];
 const CALS = [["TM", "tm"], ["YNK", "ynk"], ["WRK", "wrk"]];
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const DAYS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
 const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 const addDays = (s, n) => { const [y, m, d] = s.split("-").map(Number); return ymd(new Date(y, m - 1, d + n)); };
-const TABS = [["all", "All"], ["note", "Notes"], ["task", "Tasks"], ["done", "Done"]];
+const TABS = [["all", "All"], ["note", "Notes"], ["task", "Tasks"], ["done", "Done"], ["bookmark", "Bookmarks"]];
+const isBm = (i) => i.kind === "note" && i.cats.includes("bookmark");
 
 const api = async (req) => {
   try {
@@ -38,14 +39,63 @@ const keyHints = (text, t) => h_flex().gap(14).items_center().min_w(0).overflow_
   return h_flex().gap(6).items_center().flex_none().child(keyChip(w.slice(0, n).join(" "), t)).when(Boolean(label), (e) => e.child(div().text_size(12).text_color(t.dim).child(label)));
 }));
 
+const HELP = [
+  ["List", [
+    ["J K · ↑ ↓", "Move the selection."],
+    ["Ctrl L", "Focus the reader on the right (then J K scroll)."],
+    ["Enter · e", "Edit the selected item."],
+    ["n", "New note (MEMO, shows in jtx Board Notes)."],
+    ["T · Y · W", "New task in TM, YNK or WRK."],
+    ["x", "Mark the task done, or reopen it. Tasks only."],
+    ["B", "Task or note becomes a bookmark (note in MEMO, tag bookmark). On a bookmark: back to a task in TM."],
+    ["O", "Open the item's link in the default browser."],
+    ["U", "Copy the item's link."],
+    ["d", "Delete the item. Press twice to confirm."],
+    ["a", "Show or hide done tasks in All and Tasks."],
+    ["r", "Reload from the server."],
+    ["/", "Search titles and bodies."],
+    ["1 – 5", "Tabs: All, Notes, Tasks, Done, Bookmarks. Bookmarks are hidden from All and Notes."],
+  ]],
+  ["Reader", [
+    ["J K · ↑ ↓", "Scroll a line."],
+    ["Space · Ctrl F", "Scroll a page down (Ctrl B or Page Up: up)."],
+    ["Ctrl D · Ctrl U", "Scroll half a page down or up."],
+    ["g · G", "Jump to the top or the end."],
+    ["C", "Copy the whole body."],
+    ["O · U", "Open the link, copy the link."],
+    ["Enter · e", "Edit."],
+    ["x · B · n · T Y W", "Same as in the list."],
+    ["Ctrl H", "Back to the list."],
+  ]],
+  ["Editing", [
+    ["Tab · Shift Tab", "Next or previous field (title, due, body)."],
+    ["Ctrl S", "Save now. Typing saves by itself about half a second after you stop; chips save at once."],
+    ["Ctrl H", "Back to the reader (from the date picker: close it and keep the value)."],
+    ["Ctrl L", "Open the date picker from the due field."],
+  ]],
+  ["Date picker", [
+    ["H J K L", "Move the day left, down, up, right."],
+    ["[ · ]", "Hour down or up."],
+    [", · .", "Minute down or up."],
+    ["Enter", "Done: set the due date."],
+    ["c", "Cancel."],
+    ["0", "Date only, no time."],
+    ["x", "Clear the due date."],
+  ]],
+  ["Anywhere", [
+    ["?", "This help. Any key closes it."],
+    ["Esc", "Closes the whole mod, not just the current view. Pending edits are saved first."],
+  ]],
+];
+
 export default class Memo extends View {
   init(_props, cx) {
     this.items = []; this.loaded = this.items.length > 0; this.error = null;
-    this.tab = "all"; this.showDone = false; this.query = "";
+    this.tab = "all"; this.showDone = false; this.query = ""; this.catFilter = new Set();
     this.curId = null; this.cur = null; this.state = ""; this.note = null; this.askDel = null;
     this.focused = new Set(); this.populating = false; this.seq = 0; this.saving = false; this.again = false;
     this.handle = cx.focus_handle();
-    this.calendar = CalendarState.new(); this.calOpen = false; this.pickerFocus = false; this.pcur = null; this.editing = false; this.rightFocus = false; this.pvOff = 0; this.flash = "";
+    this.calendar = CalendarState.new(); this.calOpen = false; this.pickerFocus = false; this.pcur = null; this.editing = false; this.rightFocus = false; this.pvOff = 0; this.flash = ""; this.helpOpen = false;
 
     this.search = InputState.new({ placeholder: "Search…" });
     this.title = InputState.new({ placeholder: "Title" });
@@ -66,7 +116,8 @@ export default class Memo extends View {
     cx.timer.after(400, () => { if (!this.focused.size) this.handle.focus(); });
     this.refresh(cx);
     // Voice notes shared from the phone arrive as audio attachments: transcribe them into the description, then reload.
-    cx.spawn(async (cx) => { const r = await api({ op: "transcribe" }); if (r.done) this.refresh(cx); });
+    // Then tasks that are just a shared link move to the Bookmarks tab (a voice note starting with "task" keeps it a task).
+    cx.spawn(async (cx) => { const r = await api({ op: "transcribe" }); const b = await api({ op: "sweep" }); if (r.done || b.done) this.refresh(cx); });
   }
 
   get typing() { return this.focused.size > 0; }
@@ -90,7 +141,8 @@ export default class Memo extends View {
     const q = this.query;
     const rank = (i) => (i.kind === "task" ? (isDone(i) ? 2 : 0) : 1);
     return this.items
-      .filter((i) => this.tab === "done" ? i.kind === "task" && isDone(i) : (this.tab === "all" || i.kind === this.tab) && (this.showDone || !(i.kind === "task" && isDone(i))))
+      .filter((i) => this.tab === "bookmark" ? isBm(i) : this.tab === "done" ? i.kind === "task" && isDone(i) : !isBm(i) && (this.tab === "all" || i.kind === this.tab) && (this.showDone || !(i.kind === "task" && isDone(i))))
+      .filter((i) => this.tab !== "bookmark" || [...this.catFilter].every((c) => i.cats.includes(c)))
       .filter((i) => !q || i.title.toLowerCase().includes(q) || i.cats.some((c) => c.includes(q)))
       .sort((a, b) => rank(a) - rank(b) || (a.kind === "task" && b.kind === "task" ? (a.due || "9999").localeCompare(b.due || "9999") : 0) || b.modified.localeCompare(a.modified));
   }
@@ -182,6 +234,16 @@ export default class Memo extends View {
     if (!this.cur) return;
     const has = this.cur.cats.includes(c);
     this.setField({ cats: has ? this.cur.cats.filter((x) => x !== c) : [...this.cur.cats, c] }, cx);
+  }
+
+  // B flips the selected item: task -> bookmark, note -> bookmark, bookmark -> task in TM.
+  async flip(cx) {
+    const c = this.cur; if (!c) return;
+    await this.flush(cx);
+    if (c.kind === "note" && !isBm(c)) { this.setField({ cats: [...c.cats, "bookmark"] }, cx); return; }
+    const r = await api({ op: "convert", id: c.id, to: c.kind === "task" ? "bookmark" : "tm" });
+    if (!r.id) { this.note = r.error ?? "Could not convert"; cx.notify(); return; }
+    this.curId = null; this.cur = null; this.refresh(cx);
   }
 
   async create(kind, cx, calName = "tm") {
@@ -318,7 +380,7 @@ export default class Memo extends View {
     return true;
   }
 
-  urls() { return [...new Set(((this.cur?.body ?? "") + "\n" + (this.cur?.title ?? "")).match(/https?:\/\/[^\s<>"')\]]+/g) ?? [])].map((u) => u.replace(/[.,;:!?]+$/, "")); }
+  urls() { return [...new Set(((this.cur?.url ?? "") + "\n" + (this.cur?.body ?? "") + "\n" + (this.cur?.title ?? "")).match(/https?:\/\/[^\s<>"')\]]+/g) ?? [])].map((u) => u.replace(/[.,;:!?]+$/, "")); }
   copyText(text, what, cx) { if (!text) { this.flash = "nothing to copy"; return; } cx.write_to_clipboard(text); this.flash = `copied ${what}`; }
   openLink(url, cx) { if (!url) { this.flash = "no link"; return; } cx.open_url(url); this.flash = "opened link"; }
 
@@ -331,6 +393,8 @@ export default class Memo extends View {
       else if (ctrl && k === "s") { this.save(cx); cx.stop_propagation(); }
       return;
     }
+    if (this.helpOpen) { this.helpOpen = false; cx.stop_propagation(); cx.notify(); return; }
+    if (k === "?" || (k === "/" && e.modifiers?.shift)) { this.helpOpen = true; cx.stop_propagation(); cx.notify(); return; }
     if (this.pickerFocus) { if (this.pickerKey(k, cx)) cx.stop_propagation(); return; }
     if (this.rightFocus && !this.editing) {
       this.flash = "";
@@ -347,6 +411,7 @@ export default class Memo extends View {
       else if (k === "G" || (k === "g" && e.modifiers?.shift)) { this.pvOff = 1e9; this.scrollView(0); this.pvOff = Math.max(0, this.pvOff - 12); }
       else if (k === "enter" || k === "e" || k === "i") this.enterEdit(cx);
       else if (k === "x" && this.cur?.kind === "task") this.setField({ status: this.cur.status === "COMPLETED" ? "NEEDS-ACTION" : "COMPLETED" }, cx);
+      else if (k === "b") this.flip(cx);
       else if (k === "n") this.create("note", cx);
       else if (k === "t" || k === "y" || k === "w") this.create("task", cx, { t: "tm", y: "ynk", w: "wrk" }[k]);
       else return;
@@ -355,6 +420,9 @@ export default class Memo extends View {
     if (k === "down" || k === "j") this.move(1, cx);
     else if (k === "up" || k === "k") this.move(-1, cx);
     else if ((k === "enter" || k === "e") && this.cur) this.enterEdit(cx);
+    else if (k === "b") this.flip(cx);
+    else if (k === "o") this.openLink(this.urls()[0], cx);
+    else if (k === "u") this.copyText(this.urls()[0], "link", cx);
     else if (k === "n") this.create("note", cx);
     else if (k === "t" || k === "y" || k === "w") this.create("task", cx, { t: "tm", y: "ynk", w: "wrk" }[k]);
     else if (k === "x" && this.cur?.kind === "task") this.setField({ status: this.cur.status === "COMPLETED" ? "NEEDS-ACTION" : "COMPLETED" }, cx);
@@ -362,7 +430,7 @@ export default class Memo extends View {
     else if (k === "a") { this.showDone = !this.showDone; this.keepSelection(cx); }
     else if (k === "r") this.refresh(cx);
     else if (k === "/") this.search.focus();
-    else if (k === "1" || k === "2" || k === "3" || k === "4") { this.tab = TABS[Number(k) - 1][0]; this.keepSelection(cx); }
+    else if (k === "1" || k === "2" || k === "3" || k === "4" || k === "5") { this.tab = TABS[Number(k) - 1][0]; this.keepSelection(cx); }
     else return;
     cx.stop_propagation(); cx.notify();
   }
@@ -428,7 +496,11 @@ export default class Memo extends View {
           .child(h_flex().gap(2).flex_wrap().children(Array.from({ length: 24 }, (_, h) => String(h).padStart(2, "0")).map((h) => cell(`h-${h}`, h, dH === h, (cx) => this.setDue(dDate || todayD, `${h}:${dM || "00"}`, cx)))))
           .child(div().text_size(10).text_color(t.dim).child("Minute"))
           .child(h_flex().gap(2).flex_wrap().children(Array.from({ length: 12 }, (_, m) => String(m * 5).padStart(2, "0")).map((m) => cell(`m-${m}`, m, dM === m, (cx) => this.setDue(dDate || todayD, `${dH || "09"}:${m}`, cx)))))));
-    const counts = { all: this.items.filter((i) => this.showDone || !(i.kind === "task" && isDone(i))).length };
+    // Bookmarks tab: category filter chips (tm / ynk / wrk first), several can be on at once and narrow the list (all must match).
+    const catCount = {}; for (const i of this.items) if (isBm(i)) for (const c of i.cats) if (c !== "bookmark") catCount[c] = (catCount[c] ?? 0) + 1;
+    const ORDER = ["tm", "ynk", "wrk"];
+    const bcats = [...new Set([...Object.keys(catCount), ...this.catFilter])].sort((a, b) => { const ia = ORDER.indexOf(a), ib = ORDER.indexOf(b); return (ia < 0 ? 9 : ia) - (ib < 0 ? 9 : ib) || a.localeCompare(b); });
+    const counts = { all: this.items.filter((i) => !isBm(i) && (this.showDone || !(i.kind === "task" && isDone(i)))).length };
     const editPane = !c
       ? div().p(14).text_size(12).text_color(t.dim).child(this.curId ? "Loading…" : this.loaded ? "Nothing selected. n new note, t new task." : "Loading…")
       : v_flex().flex_1().min_h(0).p(14).gap(10)
@@ -449,7 +521,7 @@ export default class Memo extends View {
           .child(Textarea.new(this.body).flex_1().min_h(120).px(10).py(8).rounded(9).border_1().border_color(this.focused.has("body") ? t.accent : t.border).bg(t.raised).text_size(12.8).text_color(t.foreground)))
         .child(h_flex().h(18).flex_none().text_size(11).text_color(this.note ? t.blocked : t.dim).child(this.note ?? this.state));
 
-    const lines = (c?.body ?? "").replace(/\n+$/, "").split("\n");
+    const lines = ((c?.url && !(c?.body ?? "").includes(c.url) ? c.url + "\n\n" : "") + (c?.body ?? "")).replace(/\n+$/, "").split("\n");
     const off = Math.min(this.pvOff, Math.max(0, lines.length - 1));
     const prioName = { 1: "High", 5: "Medium", 9: "Low" }[c?.prio];
     const statusName = (STATUSES.find(([, v]) => v === c?.status) ?? [])[0];
@@ -474,22 +546,33 @@ export default class Memo extends View {
       .when(lines.length > 1 || Boolean(this.flash), (e) => e.child(div().flex_none().text_size(11).text_color(this.flash ? t.accent : t.dim).child(this.flash || `line ${off + 1} of ${lines.length}`)));
     const detail = this.editing ? editPane : viewPane;
 
-    const hint = this.pickerFocus ? "H J K L day · [ ] hour · , . minute · Enter done · C cancel · 0 no time · x clear"
-      : this.typing ? "Tab next field · Ctrl H back · Ctrl L picker · Esc close"
-      : this.rightFocus && !this.editing ? "J K scroll · C copy · O open link · U copy link · Enter edit · Ctrl H list · x done · Esc close"
-      : "J K move · Ctrl L read · Enter edit · n note · T Y W task · x done · d delete · Esc close";
+    const hint = this.helpOpen ? ""
+      : this.pickerFocus ? "H J K L day · [ ] hour · , . minute · Enter done · C cancel · 0 no time · x clear"
+      : this.typing ? "Tab next field · Ctrl H back · Ctrl L picker"
+      : this.rightFocus && !this.editing ? "O open · U copy link · x done"
+      : "n note · T Y W task · B link · O open · x done";
 
     return v_flex().id("memo").track_focus(this.handle).on_key_down((e, cx) => this.key(e, cx))
       .size_full().min_h(0).rounded(10).overflow_hidden().border_1().border_color(t.border).bg(t.background).text_size(13).text_color(t.foreground)
       .child(h_flex().h(30).flex_none().pr(10).items_center().border_b(1).border_color(t.border)
         .child(div().h_full().pl(12).pr(6).flex().items_center().flex_none().text_size(12).font_medium().text_color(t.accent).child("Memo"))
         .children(TABS.map(([id, text], n) => tab(id, text, n + 1, this.tab === id, n === 0)))
-        .child(div().flex_1().min_w(0).truncate().px(10).text_size(12).text_color(this.error ? t.blocked : t.dim).child(this.error ?? `${v.length} shown${this.showDone ? " · incl. done" : ""}`))
-        .child(keyHints(hint, t)))
-      .child(h_flex().flex_1().min_h(0).items_start()
+        .child(div().flex_1().min_w(0).truncate().px(10).text_size(12).text_color(this.error ? t.blocked : t.dim).child(this.error ?? ""))
+        .when(Boolean(hint), (e) => e.child(keyHints(hint, t)))
+        .when(this.helpOpen, (e) => e.child(div().text_size(12).text_color(t.dim).mr(6).child("back")))
+        .when(!this.typing, (e) => e.child(div().pl(this.helpOpen ? 0 : 14).flex().items_center().child(keyChip("?", t)))))
+      .when(this.helpOpen, (e) => e.child(h_flex().flex_1().min_h(0).items_start().gap(28).p(18).children([HELP.slice(0, 2), HELP.slice(2)].map((col, ci) =>
+        v_flex().id(`help-${ci}`).flex_1().min_w(0).h_full().min_h(0).gap(14).overflow_y_scrollbar().children(col.map(([title, rows]) =>
+          v_flex().gap(6).flex_none().child(caption(title)).children(rows.map(([keys, text]) =>
+            h_flex().gap(10).items_start().child(div().w(150).flex_none().flex().flex_wrap().gap(4).children(keys.split(" · ").map((kk) => keyChip(kk, t))))
+              .child(div().flex_1().min_w(0).text_size(12).text_color(t.muted).child(text))))))))))
+      .when(!this.helpOpen, (e) => e.child(h_flex().flex_1().min_h(0).items_start()
         .child(v_flex().w(430).h_full().flex_none().min_h(0).border_r(1).border_color(t.border).p(14).gap(10)
           .child(Input.new(this.search).h(32).px(10).rounded(9).border_1().border_color(this.focused.has("search") ? t.accent : t.border).bg(t.raised).text_size(12.8).text_color(t.foreground))
+          .when(this.tab === "bookmark" && bcats.length > 0, (e) => e.child(h_flex().gap(6).items_center().flex_wrap().flex_none().max_h(76).overflow_y_scrollbar()
+            .children(bcats.map((cat) => pill(`bf-${cat}`, `${cat} ${catCount[cat] ?? 0}`, this.catFilter.has(cat), (cx) => { this.catFilter.has(cat) ? this.catFilter.delete(cat) : this.catFilter.add(cat); this.keepSelection(cx); cx.notify(); })))
+            .when(this.catFilter.size > 0, (x) => x.child(pill("bf-clear", "clear", false, (cx) => { this.catFilter.clear(); this.keepSelection(cx); cx.notify(); })))))
           .child(v_flex().flex_1().min_h(0).gap(1).overflow_y_scrollbar().children(rows.length ? rows : [div().px(10).py(8).text_size(12).text_color(t.dim).child(this.loaded ? "No entries." : "Loading…")])))
-        .child(v_flex().flex_1().min_w(0).h_full().min_h(0).child(detail)));
+        .child(v_flex().flex_1().min_w(0).h_full().min_h(0).child(detail))));
   }
 }

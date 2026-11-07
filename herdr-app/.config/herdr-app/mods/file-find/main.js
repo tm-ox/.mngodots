@@ -2,6 +2,8 @@
 // Files mode: Enter edits in vim in a split to the right, Ctrl+T in a new tab.
 // Dirs mode: Enter opens a shell there in a split, Ctrl+T in a new tab.
 // Ctrl+F files, Ctrl+D dirs, Ctrl+R repo/here scope, Up/Down or Ctrl+J/K move, Esc closes.
+// Header shows only the core actions; `?` opens a help panel with every key (works while the preview has focus,
+// because in the search box `?` is typed text; any key closes the panel, Esc still closes the mod).
 // Preview: Ctrl+L (or Tab) moves the keyboard to the preview: Ctrl+J/K or j/k scroll, d/u or space page,
 // Ctrl+D/U half page, PgUp/PgDn or Space/Ctrl+F/B page, gg/G ends, Enter opens, Ctrl+T new tab; Ctrl+H (or Tab, i, /) goes back to the search. Ctrl+E toggles rendered/raw markdown (rendered scrolls by wheel/scrollbar only; raw has the keys).
 // The script engine has a tight time budget, so listing and fuzzy matching run natively
@@ -20,6 +22,51 @@ const keyHints = (text, t) => h_flex().gap(14).items_center().min_w(0).overflow_
   const label = w.slice(n).join(" ");
   return h_flex().gap(6).items_center().flex_none().child(keyChip(w.slice(0, n).join(" "), t)).when(Boolean(label), (e) => e.child(div().text_size(12).text_color(t.dim).child(label)));
 }));
+
+const HELP = [
+  ["Search", [
+    ["Type", "Fuzzy-filter the list (fzf) under the repo root, or the terminal's folder in Here scope."],
+    ["Ctrl+J · Ctrl+K · ↑ · ↓", "Move the selection (wraps around)."],
+    ["Enter", "Files: edit in vim in a split to the right (pdf, docx, svg, png, jpg open in the default app). Dirs: open a shell there in a split."],
+    ["Ctrl+T", "Same as Enter, but in a new tab."],
+    ["Ctrl+O", "Files: flip the choice for this open (default app files go to vim, others to the default app)."],
+    ["Ctrl+F · Ctrl+D", "Switch to Files or Dirs mode."],
+    ["Ctrl+R", "Switch scope between the repo root and the terminal's current folder."],
+    ["PgUp · PgDn", "Scroll the preview a page."],
+    ["Ctrl+L · Tab", "Move the keyboard to the preview."],
+    ["Ctrl+E", "Markdown files: toggle rendered and raw preview."],
+    ["Esc", "Close."],
+  ]],
+  ["Preview", [
+    ["?", "Open this help (only while the preview has focus)."],
+    ["Ctrl+H · Tab · i · /", "Back to the search box."],
+    ["Ctrl+J · Ctrl+K · j · k · ↓ · ↑", "Scroll a line."],
+    ["d · u · Ctrl+D · Ctrl+U", "Scroll half a page."],
+    ["Space · PgDn · Ctrl+F", "Scroll a page down."],
+    ["PgUp · Ctrl+B", "Scroll a page up."],
+    ["gg · Home", "Jump to the top."],
+    ["G · End", "Jump to the bottom."],
+    ["Enter", "Open the file or folder like Enter in the search."],
+    ["Ctrl+T", "Open in a new tab."],
+    ["o · Ctrl+O", "Open with the other app (see Ctrl+O in Search)."],
+    ["e", "Markdown files: toggle rendered and raw preview."],
+  ]],
+  ["Dirs preview", [
+    ["Ctrl+L", "In Dirs mode, the preview is a folder listing you can browse."],
+    ["Ctrl+J · Ctrl+K · j · k · ↓ · ↑", "Move the selection in the listing."],
+    ["d · u · Ctrl+D · Ctrl+U", "Move half a page."],
+    ["Space · PgDn · Ctrl+F · PgUp · Ctrl+B", "Move a page down or up."],
+    ["gg · G", "Select the first or last entry."],
+    ["Enter · l", "Folder: go into it. File: edit in vim in a split."],
+    ["h · Backspace · -", "Go up one folder."],
+    ["Ctrl+T", "Open the selected file or folder in a new tab (folders get a shell)."],
+    ["o · Ctrl+O", "Open the selected file with the other app."],
+  ]],
+  ["Markdown", [
+    ["Ctrl+E · e", "Toggle rendered and raw. Raw uses the preview scroll keys."],
+    ["Wheel · scrollbar", "Rendered markdown scrolls only this way; the scroll keys do nothing there."],
+  ]],
+];
 
 const EDITOR = ["vim"];
 // Files with these extensions open in the default app (xdg-open) on Enter; Ctrl+O flips the choice for one open
@@ -55,6 +102,7 @@ export default class FileFind extends View {
     this.pvItem = null;
     this.pfocus = false; // keyboard on the preview: j/k scroll
     this.raw = false;
+    this.helpOpen = false;
     this.here = focused()?.cwd ?? null;
     this.root = this.here;
     this.input = InputState.new({ placeholder: "Find…" });
@@ -249,15 +297,14 @@ export default class FileFind extends View {
         .child(div().w(1).h_full().bg(t.input ?? t.border))
         .child(div().px(8).flex().items_center().child(text)));
     const browsing = this.mode === "dirs" && Boolean(pv.dir);
-    const hint = this.pfocus && browsing
-      ? "Ctrl+J/K select · Enter open / enter folder · h up · Ctrl+D/U half · gg/G ends · Ctrl+T tab · Ctrl+H back"
-      : !this.pfocus && browsing ? "Ctrl+L browse folder · Enter shell here"
-      : this.pfocus && pv.md && !this.raw
-      ? "Wheel scrolls · e raw (keys scroll) · Enter open · Ctrl+T tab · Ctrl+H back"
-      : this.pfocus
-      ? "Ctrl+J/K line · Ctrl+D/U half · PgDn/PgUp page · gg/G ends · " + (pv.md ? "e raw · " : "") + "Enter open · Ctrl+T tab · Ctrl+H back"
-      : pv.md && !this.raw ? "Ctrl+L focus preview · Wheel scrolls · Ctrl+E raw (keys scroll)"
-      : "Ctrl+L focus preview · PgDn/PgUp scroll" + (pv.md ? " · Ctrl+E raw" : "");
+    const hint = this.helpOpen ? ""
+      : this.pfocus && browsing ? "Enter open / enter folder · h up"
+      : this.pfocus && pv.md && !this.raw ? "e raw (keys scroll)"
+      : this.pfocus ? (pv.md ? "e raw" : "")
+      : browsing ? "Ctrl+L browse folder"
+      : pv.md && !this.raw ? "Ctrl+L preview · Ctrl+E raw" : "Ctrl+L preview" + (pv.md ? " · Ctrl+E raw" : "");
+    const topHint = this.helpOpen ? "" : this.mode === "dirs" ? "Enter shell · Ctrl+T tab" : "Enter split · Ctrl+T tab · Ctrl+O other app";
+    const caption = (text) => div().text_size(10).font_medium().text_color(t.accent).child(text.toUpperCase());
     return v_flex()
       .id("file-find")
       .track_focus(this.handle)
@@ -265,6 +312,9 @@ export default class FileFind extends View {
         const k = e.key;
         const ctrl = e.modifiers.control;
         if (k === "escape") return closeOverlay(props().overlay);
+        if (this.helpOpen) { this.helpOpen = false; cx.stop_propagation(); cx.notify(); return; }
+        // `?` only from the preview: in the search box it is typed text.
+        if (this.pfocus && (k === "?" || (k === "/" && e.modifiers.shift))) { this.helpOpen = true; this.gPending = false; cx.stop_propagation(); cx.notify(); return; }
         if (this.pfocus) {
           const shift = e.modifiers.shift;
           const g = this.gPending;
@@ -334,9 +384,16 @@ export default class FileFind extends View {
           .child(tab("ff-dirs", "Dirs", "Ctrl+D", this.mode === "dirs", (cx) => this.setMode("dirs", cx)))
           .child(tab("ff-scope", this.scope === "repo" ? "Repo" : "Here", "Ctrl+R", false, (cx) => this.toggleScope(cx)))
           .child(div().flex_1().min_w(0).truncate().px(10).text_size(12).text_color(t.dim).child((this.base() ?? "").replace(/^\/home\/[^/]+/, "~")))
-          .child(keyHints("Enter split · Ctrl+T tab · Ctrl+O other app · Esc", t)),
+          .when(Boolean(topHint), (e) => e.child(keyHints(topHint, t)))
+          .when(this.helpOpen, (e) => e.child(div().text_size(12).text_color(t.dim).mr(6).child("back")))
+          .when(this.pfocus || this.helpOpen, (e) => e.child(div().pl(this.helpOpen ? 0 : 14).flex().items_center().child(keyChip("?", t)))),
       )
-      .child(
+      .when(this.helpOpen, (e) => e.child(h_flex().flex_1().min_h(0).items_start().gap(28).p(18).children([HELP.slice(0, 2), HELP.slice(2)].map((col, ci) =>
+        v_flex().id(`help-${ci}`).flex_1().min_w(0).h_full().min_h(0).gap(14).overflow_y_scrollbar().children(col.map(([title, rows]) =>
+          v_flex().gap(6).flex_none().child(caption(title)).children(rows.map(([keys, text]) =>
+            h_flex().gap(10).items_start().child(div().w(170).flex_none().flex().flex_wrap().gap(4).children(keys.split(" · ").map((kk) => keyChip(kk, t))))
+              .child(div().flex_1().min_w(0).text_size(12).text_color(t.muted).child(text))))))))))
+      .when(!this.helpOpen, (e) => e.child(
         v_flex().flex_1().min_h(0).p(14).gap(10)
           .child(Input.new(this.input).h(36).px(10).rounded(9).border_1().border_color(t.accent).bg(t.raised).text_size(12.8).text_color(t.foreground))
           .child(
@@ -391,7 +448,7 @@ export default class FileFind extends View {
                   ),
               ),
           ),
-      )
+      ))
     );
   }
 }
