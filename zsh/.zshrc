@@ -1,7 +1,9 @@
 eval "$(starship init zsh)"
 
 # SSH agent
-eval $(keychain --eval --quiet ~/.ssh/id_ed25519)
+# every key loads with confirm-on-use (Allow/Deny pop-up per use); helper below shows the dialog
+export SSH_ASKPASS="$HOME/.config/scripts/ssh-askpass-confirm.sh"
+eval $(keychain --eval --quiet --confirm ~/.ssh/id_ed25519)
 # stable agent path for GUI-launched tools (herdr) that lack SSH_AUTH_SOCK
 [[ -S $SSH_AUTH_SOCK ]] && ln -sfn "$SSH_AUTH_SOCK" ~/.keychain/agent.sock
 

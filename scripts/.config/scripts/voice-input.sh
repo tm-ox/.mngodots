@@ -21,6 +21,11 @@
 #   Available models: tiny.en (~75MB), base.en (~142MB), small.en, medium.en (~769MB)
 #   Download any model from: https://huggingface.co/ggerganov/whisper.cpp
 #
+# SPELLING (Australian/UK English)
+#   Whisper has no UK/AU language option (-l en is the only English), so the output
+#   is nudged with a spelling-primed --prompt (PROMPT below). Edit that sentence to
+#   steer further. VOICE_SPELLING=us turns it off.
+#
 # RECOVERY
 #   Script stuck / notification won't clear:
 #     rm -f /tmp/voice-input.lock /tmp/voice-input.notify /tmp/voice-input-active.wav
@@ -39,6 +44,8 @@ LOCK=/tmp/voice-input.lock
 NOTIFY=/tmp/voice-input.notify
 AUDIO=/tmp/voice-input-active.wav
 MODEL=${VOICE_MODEL:-$HOME/.local/share/whisper.cpp/ggml-small.en.bin}
+SPELLING=${VOICE_SPELLING:-au}
+PROMPT="Right, I'll organise the colour scheme for the centre, check the licence and the behaviour of the programme, and travel to Sydney on Monday."
 
 close_notification() {
     if [ -f "$NOTIFY" ]; then
@@ -106,8 +113,13 @@ if [ -f "$LOCK" ]; then
     notify-send --print-id -r "$(cat $NOTIFY 2>/dev/null || echo 0)" \
         "Voice" "Transcribing…" -i audio-input-microphone > "$NOTIFY"
 
-    TEXT=$(whisper-cli -m "$MODEL" -np -nt -f "$AUDIO" 2>/dev/null \
+    WARGS=()
+    [ "$SPELLING" = au ] && WARGS=(--prompt "$PROMPT")
+    TEXT=$(whisper-cli -m "$MODEL" -np -nt "${WARGS[@]}" -f "$AUDIO" 2>/dev/null \
         | tr -d '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+
+    # A primed prompt can be echoed back on near-silent audio: drop that.
+    [ "$SPELLING" = au ] && [ "$TEXT" = "$PROMPT" ] && TEXT=""
 
     rm -f "$AUDIO"
 
