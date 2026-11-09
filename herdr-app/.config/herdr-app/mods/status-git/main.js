@@ -37,7 +37,8 @@ const INBOX_QUERY = `fragment F on PullRequest {
   repository { nameWithOwner }
   commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
   latestReviews(first: 10) { nodes { author { login } state submittedAt commit { oid } } }
-  comments(last: 1) { nodes { createdAt author { login } } }
+  comments(last: 8) { nodes { createdAt author { login } } }
+  reviewThreads(last: 30) { nodes { comments(last: 3) { nodes { createdAt author { login } } } } }
   files(first: 100) { nodes { path } }
 }
 query($q1: String!, $q2: String!, $q3: String!, $q4: String!) {
@@ -56,13 +57,21 @@ const riskOf = (n) => {
   return paths.some((p) => RISK_AUTH.test(p)) ? "auth" : paths.some((p) => RISK_INFRA.test(p)) ? "infra" : n.additions + n.deletions > 800 ? "large" : "";
 };
 const inboxRow = (n, me) => {
-  const rev = n.latestReviews?.nodes ?? [], mine = rev.find((x) => x.author?.login === me), last = n.comments?.nodes?.[0];
+  const rev = n.latestReviews?.nodes ?? [], mine = rev.find((x) => x.author?.login === me), last = n.comments?.nodes?.at(-1);
   const flag = mine && mine.commit?.oid && mine.commit.oid !== n.headRefOid ? "re-review"
     : mine && last && last.author?.login !== me && Date.parse(last.createdAt) > Date.parse(mine.submittedAt) ? "replied" : "";
   const by = n.author?.login ?? "";
+  // Newest activity by someone else (comment, review, inline thread reply) after your own last action; 0 if none.
+  const ev = [];
+  for (const c of n.comments?.nodes ?? []) ev.push([c.author?.login, c.createdAt]);
+  for (const r of n.latestReviews?.nodes ?? []) ev.push([r.author?.login, r.submittedAt]);
+  for (const th of n.reviewThreads?.nodes ?? []) for (const c of th.comments?.nodes ?? []) ev.push([c.author?.login, c.createdAt]);
+  let myAt = 0, otherAt = 0;
+  for (const [who, at] of ev) { const ms = Date.parse(at) || 0; if (!who || who.endsWith("[bot]")) continue; if (who === me) myAt = Math.max(myAt, ms); else otherAt = Math.max(otherAt, ms); }
+  const act = otherAt > myAt ? otherAt : 0;
   const appr = rev.filter((x) => x.state === "APPROVED" && x.author?.login && x.author.login !== by).map((x) => x.author.login);
   const risk = riskOf(n);
-  return { repo: n.repository.nameWithOwner, n: n.number, title: n.title, url: n.url, author: by, createdAt: n.createdAt, updatedAt: n.updatedAt, draft: n.isDraft, add: n.additions, del: n.deletions, files: n.changedFiles, ci: ciOf(n.commits?.nodes?.[0]?.commit?.statusCheckRollup?.state), decision: n.reviewDecision ?? "", my: mine?.state ?? "", flag, appr, risk, covered: appr.length > 0 && !(risk && appr.length < 2) };
+  return { act, repo: n.repository.nameWithOwner, n: n.number, title: n.title, url: n.url, author: by, createdAt: n.createdAt, updatedAt: n.updatedAt, draft: n.isDraft, add: n.additions, del: n.deletions, files: n.changedFiles, ci: ciOf(n.commits?.nodes?.[0]?.commit?.statusCheckRollup?.state), decision: n.reviewDecision ?? "", my: mine?.state ?? "", flag, appr, risk, covered: appr.length > 0 && !(risk && appr.length < 2) };
 };
 // A PR of yours is ready once someone approved, nothing asks for changes and CI is not failing or running.
 const readyOf = (d) => !d.draft && d.decision !== "CHANGES_REQUESTED" && (d.appr.length > 0 || d.decision === "APPROVED") && d.ci !== "fail" && d.ci !== "wait";
@@ -218,10 +227,17 @@ export default class WorkspaceStatus extends View {
             notify({ title: `PR #${d.n} ready to merge`, body: `${d.repo.split("/")[1]} | ${d.title}${second ? ` | touches ${d.risk}: consider a second approval` : ""}`, level: second ? "warning" : "success", timeout: 0, action: { name: "mod.open", args: { name: "changes-float" } } });
           }
         }
+        if (!this.seenLoaded) { // opened-PR marks survive restarts in a file; with no file yet, everything current counts as seen
+          this.seenLoaded = true;
+          let seen = null;
+          try { const f = await hc(["exec", "sh", "-c", 'cat "$HOME/.cache/herdr-pr-seen.json" 2>/dev/null']); if (f.code === 0 && f.stdout.trim()) seen = JSON.parse(f.stdout); } catch {}
+          if (!seen) { seen = {}; for (const d of [...inbox.waiting, ...inbox.mine]) seen[d.url] = Date.now(); hc(["exec", "sh", "-c", 'mkdir -p "$HOME/.cache" && printf %s "$1" > "$HOME/.cache/herdr-pr-seen.json"', "sh", JSON.stringify(seen)]).catch(() => {}); }
+          setShared("pr-seen", { ...seen, ...(shared("pr-seen") || {}) });
+        }
         this.inboxSeen = true;
         setShared("inbox", inbox); setShared("inbox-error", "");
         const unc = inbox.review.filter((d) => !d.draft && !d.covered).sort((x, y) => Date.parse(x.createdAt) - Date.parse(y.createdAt));
-        const counts = { review: unc.length, oldest: unc[0]?.createdAt ?? "", rerev: inbox.waiting.filter((d) => d.flag).length, ready: inbox.mine.filter(readyOf).length, fix: inbox.mine.filter((d) => !d.draft && (d.decision === "CHANGES_REQUESTED" || d.ci === "fail")).length };
+        const counts = { review: unc.length, oldest: unc[0]?.createdAt ?? "", rerev: inbox.waiting.filter((d) => d.flag).length, ready: inbox.mine.filter(readyOf).length, talk: [...inbox.waiting, ...inbox.mine].filter((d) => !d.draft && d.act > ((shared("pr-seen") || {})[d.url] || 0)).length, fix: inbox.mine.filter((d) => !d.draft && (d.decision === "CHANGES_REQUESTED" || d.ci === "fail")).length };
         if (JSON.stringify(counts) !== JSON.stringify(shared("inbox-counts"))) setShared("inbox-counts", counts); // header chips (tabs-tm)
         const reviews = inbox.review.filter((d) => !d.draft && !d.covered).map((d) => ({ n: d.n, repo: d.repo })), rerev = inbox.waiting.filter((d) => d.flag).length, ready = inbox.mine.filter(readyOf).length;
         if (JSON.stringify(reviews) !== JSON.stringify(this.reviews) || rerev !== this.rerev || ready !== this.ready) { this.reviews = reviews; this.rerev = rerev; this.ready = ready; cx.notify(); }

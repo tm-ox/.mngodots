@@ -77,6 +77,12 @@ inject() {
         case "$appid" in
             kitty|foot|Alacritty|alacritty|xterm|st|URxvt|com.mitchellh.ghostty|org.wezfurlong.wezterm|herdr-app)
                 mode=terminal ;;
+            *[Oo]pen[Mm]aus*|*com.openmausbot*)
+                # Electron chat app, run under XWayland (--ozone-platform=x11). The
+                # wl-copy + ctrl+v route blurs the prompt field, and wtype's keymap
+                # swap is misread by XWayland (digits instead of letters), so type
+                # through X instead (xdotool, no clipboard).
+                mode=xtype ;;
             buzz-desktop)
                 # WebKitGTK ignores the synthetic ctrl+v keystroke even though
                 # manual paste works, so type the text instead.
@@ -84,6 +90,11 @@ inject() {
             *)
                 mode=normal ;;
         esac
+    fi
+
+    if [ "$mode" = xtype ]; then
+        xdotool type --clearmodifiers --delay 4 -- "$text"
+        return
     fi
 
     if [ "$mode" = type ]; then

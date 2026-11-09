@@ -66,6 +66,7 @@ const HELP = [
   ["PR detail", [
     ["Backspace · ← · H", "One step back: close prompt, diff to overview, overview to list."],
     ["D", "Toggle diff and overview."],
+    ["R", "Show or hide the agent's review notes and posted text (hidden once posted)."],
     ["A", "Approve (Enter confirms)."],
     ["C", "Comment (type, Enter sends)."],
     ["X", "Request changes (type, Enter sends)."],
@@ -116,7 +117,7 @@ const scopeKey = () => (Array.isArray(shared("inbox-orgs")) ? shared("inbox-orgs
 // Same call file-find uses (detached, in the user's real environment); `hc exec xdg-open` opened nothing.
 const openUrl = (url) => { exec("setsid", ["-f", "xdg-open", url]).catch(() => {}); };
 // Survives closing the window (module scope), so reopening and revisiting a PR show at once and refresh behind.
-const CACHE = { info: {}, details: new Map(), drafts: new Map(), local: new Map(), draftSet: new Set() };
+const CACHE = { info: {}, details: new Map(), drafts: new Map(), at: new Map(), local: new Map(), draftSet: new Set() };
 // Drafts written by the rev worker on the server (docs/<date>-<repo>-<pr>-review.md), read over ssh.
 const REV_HOST = "tm-serve";
 const proposedText = (md) => { const m = /^##\s+Proposed text[^\n]*\n([\s\S]*?)(?=^##\s|$(?![\s\S]))/im.exec(md || ""); return m ? m[1].trim().replace(/(?<!\n)\n(?!\n|\s*[-*] )/g, " ") : ""; };
@@ -149,7 +150,9 @@ function diffRows(lines) {
 }
 
 // Inbox summary cards: each one filters the list to its rows (click again to clear).
+const newTalk = (d) => (d.sec === "waiting" || d.sec === "mine") && !d.draft && d.act > ((shared("pr-seen") || {})[d.url] || 0);
 const INBOX_CARDS = [
+  { k: "talk", name: "New comments", f: newTalk },
   { k: "review", name: "To review", f: (d) => d.sec === "review" },
   { k: "rerev", name: "Re-review", f: (d) => d.sec === "waiting" && Boolean(d.flag) },
   { k: "ready", name: "Ready to merge", f: (d) => d.sec === "mine" && d.decision !== "CHANGES_REQUESTED" && d.ci !== "fail" && d.ci !== "wait" && (d.appr.length > 0 || d.decision === "APPROVED") },
@@ -199,6 +202,7 @@ export default class Changes extends View {
     if (fc && fc.context === key()) { this.context = fc.context; this.root = fc.root; this.hasHead = fc.hasHead; this.files = fc.files; this.open = null; }
     this.refresh(cx);
     this.loadPrs(cx);
+    cx.timer.every(20000, (cx) => this.refreshDetail(cx));
     cx.timer.every(10000, (cx) => { if (this.on) this.refresh(cx); this.loadPrs(cx); if (this.tab === "dashboard") this.loadInfo(cx); if (this.tab === "repos") this.loadRepos(cx); this.loadIssues(cx); });
     if (this.tab === "repos") this.loadRepos(cx);
   }
@@ -455,7 +459,7 @@ export default class Changes extends View {
     const t = theme(), add = this.files.reduce((n, f) => n + f.add, 0), del = this.files.reduce((n, f) => n + f.del, 0);
     const enabled = Boolean(this.message.trim() && this.root && !this.busy && !this.loading);
     const hint = this.helpOpen ? ""
-      : this.detail ? (this.detail.fromInbox ? "N P next/prev PR · " : "") + "D diff · A approve · C comment · X request changes · M merge · B browser"
+      : this.detail ? (this.detail.fromInbox ? "N P next/prev PR · " : "") + "R notes"
       : this.tab === "changes" ? "Enter edit in vim"
       : this.tab === "inbox" ? "B browser · A all open PRs · O scope · R refresh"
       : this.tab === "dashboard" ? "B browser · R refresh"
@@ -568,9 +572,9 @@ export default class Changes extends View {
         .when(Boolean(hint), (e) => e.child(keyHints(hint, t).px(8)))
         .when(!this.helpOpen && !this.detail && this.tab === "changes", (e) => e.child(div().px(4).text_size(11).text_color(t.ansi2).child(`+${add}`)).child(div().px(4).text_size(11).text_color(t.ansi1).child(`−${del}`)))
         .when(this.helpOpen, (e) => e.child(div().text_size(12).text_color(t.dim).mr(6).child("back")))
-        .when(!this.typing, (e) => e.child(div().pl(this.helpOpen ? 0 : 14).pr(4).flex().items_center().child(keyChip("?", t))))
         .child(div().id("pin").h_full().px(10).flex().items_center().cursor_pointer().text_size(11).text_color(pinOf() ? t.accent : t.dim).hover((x) => x.text_color(pinOf() ? t.accent : t.muted)).on_click((_e, cx) => this.togglePin(cx))
-          .child(pinOf() ? `Pinned · ${pinOf()[0].replace(/^\/home\/[^/]+/, "~")}` : "Pin repo (P)")))
+          .child(h_flex().gap(6).items_center().child(keyChip("P", t)).child(pinOf() ? `Pinned · ${pinOf()[0].replace(/^\/home\/[^/]+/, "~")}` : "Pin repo")))
+        .when(!this.typing, (e) => e.child(div().pr(10).flex().items_center().child(keyChip("?", t)))))
       .when(this.helpOpen, helpPanel)
       .when(!this.helpOpen && Boolean(this.detail), (e) => e.child(this.detailBody(t)))
       .when(!this.helpOpen && !this.detail && this.tab === "inbox", (e) => e.child(this.inboxBody(t)))
@@ -943,6 +947,7 @@ export default class Changes extends View {
   }
 
   openPr(d, top, cx) {
+    if (d.url) { const seen = { ...(shared("pr-seen") || {}), [d.url]: Date.now() }; setShared("pr-seen", seen); setShared("inbox-ask", Date.now()); hc(["exec", "sh", "-c", 'mkdir -p "$HOME/.cache" && printf %s "$1" > "$HOME/.cache/herdr-pr-seen.json"', "sh", JSON.stringify(seen)]).catch(() => {}); } // opening a PR clears its new-comments mark
     const hit = CACHE.details.get(`${top}#${d.number}`), diff = CACHE.details.get(`${top}#${d.number}#diff`);
     this.detail = { n: d.number, top, url: d.url, title: d.title, loading: !hit, view: "overview", data: hit ?? null, error: null, rows: diff?.rows ?? [], width: diff?.width ?? 300, diffState: diff ? "ready" : "none", confirm: null, note: null, busy: false };
     cx.notify();
@@ -982,25 +987,33 @@ export default class Changes extends View {
     if (!det) return;
     const name = det.top.split("/").pop(), key = name + "#" + det.n;
     det.draft = CACHE.drafts.get(key) ?? null;
-    det.local = CACHE.local.get(key) ?? null;
+    det.local = CACHE.local.get(key) ?? null; det.localAt = CACHE.at.get("l" + key) ?? 0; det.draftAt = CACHE.at.get("d" + key) ?? 0;
     if (!/^[\w.-]+$/.test(name)) return;
     cx.spawn(async (cx) => { // a final text written on this machine (e.g. passport's docs/drafts/<repo>-pr-<n>.md) wins over rev's proposed text
       try {
-        const r = await hc(["exec", "sh", "-c", 'f=$(find "$HOME/workspace" "$HOME/repos" -maxdepth 8 -path "*/docs/drafts/$1-pr-$2.md" -print -quit 2>/dev/null); [ -n "$f" ] && cat "$f"', "sh", name, String(det.n)]);
-        const text = r.code === 0 ? r.stdout.trim().replace(/(?<!\n)\n(?!\n|\s*[-*] )/g, " ").replace(/(\*\*[^\n]+\*\*)\n(?=- )/g, "$1\n\n") : ""; // unwrap, and keep a blank line between a bold heading and its bullets
-        if (text) { CACHE.local.set(key, text); if (this.detail === det) { det.local = text; cx.notify(); } }
+        const r = await hc(["exec", "sh", "-c", 'f=$(find "$HOME/workspace" "$HOME/repos" -maxdepth 8 -path "*/docs/drafts/$1-pr-$2.md" -print -quit 2>/dev/null); [ -n "$f" ] && { stat -c %Y "$f"; cat "$f"; }', "sh", name, String(det.n)]);
+        const nl = r.code === 0 ? r.stdout.indexOf("\n") : -1, at = nl > 0 ? Number(r.stdout.slice(0, nl)) * 1000 : 0, body = nl > 0 ? r.stdout.slice(nl + 1) : "";
+        const text = r.code === 0 ? body.trim().replace(/(?<!\n)\n(?!\n|\s*[-*] )/g, " ").replace(/(\*\*[^\n]+\*\*)\n(?=- )/g, "$1\n\n") : ""; // unwrap, and keep a blank line between a bold heading and its bullets
+        if (text) { CACHE.local.set(key, text); CACHE.at.set("l" + key, at); if (this.detail === det) { det.local = text; det.localAt = at; cx.notify(); } }
       } catch {}
     });
     cx.spawn(async (cx) => {
       try {
-        const cmd = 'f=$(ls -t "$HOME"/workspace/rev/docs/*-' + name + "-" + det.n + '-review.md 2>/dev/null | head -1); [ -n "$f" ] && cat "$f"';
+        const cmd = 'f=$(ls -t "$HOME"/workspace/rev/docs/*-' + name + "-" + det.n + '-review.md 2>/dev/null | head -1); [ -n "$f" ] && { stat -c %Y "$f"; cat "$f"; }';
         const r = await exec("ssh", ["-o", "BatchMode=yes", "-o", "ConnectTimeout=5", REV_HOST, "sh -c '" + cmd + "'"]);
         if (r.code === 0 && r.stdout.trim()) {
-          CACHE.drafts.set(key, r.stdout);
-          if (this.detail === det) { det.draft = r.stdout; cx.notify(); }
+          const nl = r.stdout.indexOf("\n"), at = Number(r.stdout.slice(0, nl)) * 1000, txt = r.stdout.slice(nl + 1);
+          CACHE.drafts.set(key, txt); CACHE.at.set("d" + key, at);
+          if (this.detail === det) { det.draft = txt; det.draftAt = at; cx.notify(); }
         }
       } catch {}
     });
+  }
+
+  refreshDetail(cx) { // keeps an open PR current: reviews, comments, checks, state, and whether the draft was already posted
+    const det = this.detail;
+    if (!det || det.loading || det.busy || det.confirm) return;
+    this.fetchDetail(cx); this.loadRevDraft(cx);
   }
 
   fetchDetail(cx) {
@@ -1011,7 +1024,7 @@ export default class Changes extends View {
         const r = await this.ghRun(det, ["pr", "view", String(det.n), "--json", "number,title,body,author,state,isDraft,mergeable,reviewDecision,reviewRequests,reviews,comments,statusCheckRollup,files,additions,deletions,headRefName,baseRefName,labels,createdAt,mergedAt,url"]);
         if (this.detail !== det) return;
         if (r.code !== 0) throw new Error((r.stderr || r.stdout || "gh pr view failed").trim().split("\n")[0]);
-        det.data = JSON.parse(r.stdout); det.error = null; remember(`${det.top}#${det.n}`, det.data);
+        det.data = JSON.parse(r.stdout); det.fresh = true; det.error = null; remember(`${det.top}#${det.n}`, det.data);
         { const json = JSON.stringify(det.data); if (json.length < 100000) hc(["exec", "sh", "-c", 'umask 077; mkdir -p -m 700 /tmp/herdr-gitwin-cache && chmod 700 /tmp/herdr-gitwin-cache && printf %s "$1" > "$2"', "sh", json, cacheFile(det.top, det.n)]).catch(() => {}); }
       } catch (e) { if (this.detail === det) det.error = String(e); }
       if (this.detail === det) { det.loading = false; cx.notify(); }
@@ -1115,6 +1128,7 @@ export default class Changes extends View {
     }
     if (det.fromInbox && (k === "n" || k === "p")) { this.stepInbox(k === "n" ? 1 : -1, cx); return true; }
     if (k === "d") { det.view = det.view === "diff" ? "overview" : "diff"; if (det.view === "diff") this.loadDiff(cx); cx.notify(); return true; }
+    if (k === "r") { det.notes = !det.notes; cx.notify(); return true; }
     if (k === "b") { openUrl(det.url); return true; }
     if (k === "a") { this.askAction("approve", cx); return true; }
     if (k === "c") { this.askAction("comment", cx); return true; }
@@ -1163,6 +1177,7 @@ export default class Changes extends View {
       for (const r of d.reviews ?? []) if (r.state !== "COMMENTED" || !byAuthor.has(r.author?.login)) byAuthor.set(r.author?.login, r.state);
       // Assigned reviewers (people or teams) that have not reviewed yet, or were asked again, whoever they are.
       for (const q of d.reviewRequests ?? []) byAuthor.set(q.login ?? q.name ?? q.slug, "REQUESTED");
+      const talk = [...(d.comments ?? []), ...(d.reviews ?? []).filter((r) => (r.body ?? "").trim()).map((r) => ({ author: r.author, body: r.body, createdAt: r.submittedAt, tag: r.state.toLowerCase().replace(/_/g, " ") }))].sort((x, y) => Date.parse(x.createdAt) - Date.parse(y.createdAt));
       body = v_flex().id("pr-detail").flex_1().min_w(0).min_h(0).overflow_y_scrollbar().p(16).gap(8)
         .child(h_flex().gap(8).items_center().flex_wrap()
           .child(div().px(8).py(2).rounded(5).border_1().border_color(stateColor).text_size(11).text_color(stateColor).child(d.isDraft ? "DRAFT" : d.state))
@@ -1175,17 +1190,20 @@ export default class Changes extends View {
         .when(byAuthor.size > 0, (e) => e.child(section("Reviews")).child(v_flex().gap(2).children([...byAuthor].map(([who, st], i) => h_flex().id(`rv-${i}`).h(22).gap(8).px(4).child(div().w(120).truncate().child(who ?? "")).child(div().text_color(st === "APPROVED" ? t.done : st === "CHANGES_REQUESTED" ? t.blocked : st === "REQUESTED" ? t.working : t.muted).child(st === "REQUESTED" ? "review requested" : st.toLowerCase().replace(/_/g, " ")))))))
         .child(section("Description"))
         .child(d.body?.trim() ? TextView.markdown("pr-body", d.body.slice(0, 20000)) : div().text_color(t.dim).child("No description."))
-        .when((d.comments ?? []).length > 0, (e) => e.child(section(`Comments (${d.comments.length})`)).children(d.comments.slice(-5).map((cm, i) => v_flex().id(`cm-${i}`).gap(2).py(4).child(div().text_size(11).text_color(t.dim).child(`${cm.author?.login ?? ""} | ${ago(cm.createdAt)} ago`)).child(div().child((cm.body ?? "").slice(0, 700))))))
+        .when(talk.length > 0, (e) => e.child(section(`Comments (${talk.length})`)).children(talk.slice(-6).map((cm, i) => v_flex().id(`cm-${i}`).gap(2).py(4).child(div().text_size(11).text_color(t.dim).child(`${cm.author?.login ?? ""}${cm.tag ? " | " + cm.tag : ""} | ${ago(cm.createdAt)} ago`)).child(div().child((cm.body ?? "").slice(0, 700))))))
         .when((d.files ?? []).length > 0, (e) => e.child(section(`Files (${d.files.length})`)).child(v_flex().gap(1).children(d.files.slice(0, 40).map((f, i) => h_flex().id(`fl-${i}`).h(22).gap(8).px(4).items_center().child(div().flex_1().min_w(0).truncate().text_size(12).child(f.path)).child(div().text_size(11).text_color(t.ansi2).child(`+${f.additions}`)).child(div().text_size(11).text_color(t.ansi1).child(`-${f.deletions}`))))));
     }
-    if ((det.draft || det.local) && det.view !== "diff") { // rev's draft sits to the right of the PR itself, so the two never blend
-      const rd = det.draft || "", left = body, draftPost = det.local || proposedText(rd), pi = rd.search(/^##\s+Proposed text/im), draftMain = pi >= 0 ? rd.slice(0, pi).trimEnd() : rd;
+    const dme = shared("git-me"), dsince = det.local ? det.localAt : det.draftAt;
+    const dposted = Boolean(dme && dsince && det.data && [...(det.data.reviews ?? []).map((r) => [r.author?.login, r.submittedAt]), ...(det.data.comments ?? []).map((c) => [c.author?.login, c.createdAt])].some(([who, at]) => who === dme && Date.parse(at) >= dsince - 60000));
+    if ((det.draft || det.local) && det.view !== "diff" && (det.notes || (det.fresh && dsince && !dposted))) { // stays hidden until the PR and the draft time are known, so it never flashes in and out // rev's draft sits to the right of the PR itself, so the two never blend
+      const rd = det.draft || "", left = body, draftPost = det.local || proposedText(rd), me = shared("git-me"), since = det.local ? det.localAt : det.draftAt;
+      const posted = Boolean(me && since && det.data && [...(det.data.reviews ?? []).map((r) => [r.author?.login, r.submittedAt]), ...(det.data.comments ?? []).map((c) => [c.author?.login, c.createdAt])].some(([who, at]) => who === me && Date.parse(at) >= since - 60000)), pi = rd.search(/^##\s+Proposed text/im), draftMain = pi >= 0 ? rd.slice(0, pi).trimEnd() : rd;
       body = h_flex().flex_1().min_h(0)
         .child(left)
         .child(div().w(1).flex_none().h_full().bg(t.border))
         .child(v_flex().id("pr-draft").flex_1().min_w(0).min_h(0).overflow_y_scrollbar().p(16).gap(14).bg(t.raised)
-          .when(Boolean(draftPost), (e) => e.child(section(det.local ? "Will be posted · passport" : "Will be posted", t.muted)))
-          .when(Boolean(draftPost), (e) => e.child(v_flex().id("pr-draft-post").p(12).rounded(8).border_1().border_color(t.accent)
+          .when(Boolean(draftPost), (e) => e.child(section(posted ? "Already posted" : det.local ? "Will be posted · passport" : "Will be posted", t.muted)))
+          .when(Boolean(draftPost), (e) => e.child(v_flex().id("pr-draft-post").p(12).rounded(8).border_1().border_color(posted ? t.border : t.accent)
             .child(TextView.markdown("pr-draft-post-md", draftPost))))
           .when(Boolean(draftMain), (e) => e.child(section("Draft from rev · notes", t.muted)))
           .when(Boolean(draftMain), (e) => e.child(TextView.markdown("pr-draft-md", draftMain.slice(0, 20000)))));
@@ -1311,6 +1329,7 @@ export default class Changes extends View {
     const mark = { pass: "✓", fail: "✗", wait: "…", none: "" };
     const heads = { all: ["All open PRs", t.muted], review: ["Review requested", t.blocked], waiting: ["Reviewed · waiting on the author", t.muted], mine: ["Your PRs", t.muted], covered: ["Already approved by someone else", t.dim] };
     const label = (d) => {
+      if (newTalk(d)) return ["new comments", t.working];
       if (d.sec === "waiting") return d.flag === "re-review" ? ["new commits", t.blocked] : d.flag === "replied" ? ["replied", t.working] : d.my === "APPROVED" ? ["you approved", t.done] : d.my === "CHANGES_REQUESTED" ? ["you requested changes", t.muted] : ["you commented", t.dim];
       if (d.sec === "all") return d.needsMe ? ["needs you", t.blocked] : d.decision === "APPROVED" ? ["approved", t.done] : d.decision === "CHANGES_REQUESTED" ? ["changes requested", t.muted] : ["", t.dim];
       if (d.sec === "mine") return d.decision === "CHANGES_REQUESTED" ? ["changes requested", t.blocked] : d.ci === "fail" ? ["CI failing", t.blocked] : d.risk && d.appr.length < 2 ? [`2nd approval? ${d.risk}`, t.working] : ["ready to merge", t.done];
@@ -1331,7 +1350,7 @@ export default class Changes extends View {
     const oldest = all.filter((d) => d.sec === "review").sort((x, y) => Date.parse(x.createdAt) - Date.parse(y.createdAt))[0];
     const cards = this.inAll ? null : h_flex().flex_none().px(14).pt(12).pb(2).gap(8).children(INBOX_CARDS.map((c) => {
       const n = all.filter(c.f).length, on = this.card === c.k;
-      const color = { review: t.blocked, rerev: t.blocked, ready: t.done, fix: t.blocked }[c.k];
+      const color = { review: t.blocked, rerev: t.blocked, talk: t.working, ready: t.done, fix: t.blocked }[c.k];
       const sub = c.k === "review" && oldest ? `oldest ${ago(oldest.createdAt)}` : "";
       const old = c.k === "review" && oldest && Date.now() - Date.parse(oldest.createdAt) > 3 * day;
       return h_flex().id(`ib-card-${c.k}`).flex_1().min_w(0).h(54).px(14).gap(12).items_center().rounded(8).bg(t.background).border_1().border_color(on ? t.accent : n > 0 ? color + "55" : t.border).cursor_pointer().when(!on, (e) => e.hover((x) => x.bg(t.hover)))

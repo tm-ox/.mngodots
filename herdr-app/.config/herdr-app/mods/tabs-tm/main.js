@@ -101,6 +101,7 @@ export default class Tabs extends View {
     const chips = [
       ic.review > 0 && chip("review", ic.review, "to review", t.blocked, age > 3 * day ? `${Math.floor(age / day)}d` : ""),
       ic.rerev > 0 && chip("rerev", ic.rerev, "re-review", t.blocked),
+      ic.talk > 0 && chip("talk", ic.talk, "new comments", t.working),
       ic.ready > 0 && chip("ready", ic.ready, "ready", t.done),
       ic.fix > 0 && chip("fix", ic.fix, "to fix", t.blocked),
     ].filter(Boolean);

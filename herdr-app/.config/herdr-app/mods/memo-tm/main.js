@@ -4,6 +4,7 @@
 // Right pane is a reader first: Ctrl L from the list focuses it (J K scroll, Space page, g G ends), Enter / e edits, Ctrl H leaves edit, then the reader.
 // Keys: J K move, Enter edit, n new note, t y w new task in TM / YNK / WRK, x done, d delete (twice), a show done, / search, 1-5 tabs, b flips task/note <-> bookmark.
 // In a text field: Tab / Shift Tab next field, Ctrl H back to the list. Esc closes the whole mod (the host takes it), so it is never the way back.
+// Attachments (images shared from jtx Board): a paperclip in the list, chips in the reader and editor; F opens the first one (chips open their own) in the default app.
 // Text edits save by themselves 0.7 s after you stop typing; chips save at once. A save checks the server's etag.
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input, TextareaState, Textarea, CalendarState } from "gpui-base";
@@ -17,7 +18,7 @@ const MONTHS = ["January", "February", "March", "April", "May", "June", "July", 
 const DAYS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
 const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 const addDays = (s, n) => { const [y, m, d] = s.split("-").map(Number); return ymd(new Date(y, m - 1, d + n)); };
-const TABS = [["all", "All"], ["note", "Notes"], ["task", "Tasks"], ["done", "Done"], ["bookmark", "Bookmarks"]];
+const TABS = [["all", "All"], ["note", "Notes"], ["task", "Tasks"], ["bookmark", "Bookmarks"]];
 const isBm = (i) => i.kind === "note" && i.cats.includes("bookmark");
 
 const api = async (req) => {
@@ -49,12 +50,13 @@ const HELP = [
     ["x", "Mark the task done, or reopen it. Tasks only."],
     ["B", "Task or note becomes a bookmark (note in MEMO, tag bookmark). On a bookmark: back to a task in TM."],
     ["O", "Open the item's link in the default browser."],
+    ["F", "Open the item's first attachment (image or file) in the default app."],
     ["U", "Copy the item's link."],
     ["d", "Delete the item. Press twice to confirm."],
     ["a", "Show or hide done tasks in All and Tasks."],
     ["r", "Reload from the server."],
     ["/", "Search titles and bodies."],
-    ["1 – 5", "Tabs: All, Notes, Tasks, Done, Bookmarks. Bookmarks are hidden from All and Notes."],
+    ["1 – 4", "Tabs: All, Notes, Tasks, Bookmarks. Bookmarks are hidden from All and Notes."],
   ]],
   ["Reader", [
     ["J K · ↑ ↓", "Scroll a line."],
@@ -63,6 +65,7 @@ const HELP = [
     ["g · G", "Jump to the top or the end."],
     ["C", "Copy the whole body."],
     ["O · U", "Open the link, copy the link."],
+    ["F", "Open the first attachment."],
     ["Enter · e", "Edit."],
     ["x · B · n · T Y W", "Same as in the list."],
     ["Ctrl H", "Back to the list."],
@@ -382,6 +385,18 @@ export default class Memo extends View {
 
   urls() { return [...new Set(((this.cur?.url ?? "") + "\n" + (this.cur?.body ?? "") + "\n" + (this.cur?.title ?? "")).match(/https?:\/\/[^\s<>"')\]]+/g) ?? [])].map((u) => u.replace(/[.,;:!?]+$/, "")); }
   copyText(text, what, cx) { if (!text) { this.flash = "nothing to copy"; return; } cx.write_to_clipboard(text); this.flash = `copied ${what}`; }
+  async openAttachment(i, cx) {
+    const a = this.cur?.att?.[i];
+    if (!a) { this.flash = "no attachment"; cx.notify(); return; }
+    if (!a.binary) { this.flash = "link attachment, not a file"; cx.notify(); return; }
+    this.flash = `opening ${a.name}…`; cx.notify();
+    const r = await api({ op: "attachment", id: this.curId, index: a.i });
+    if (!r.path) { this.flash = r.error ?? "could not extract"; cx.notify(); return; }
+    // Images open in Satty (annotate, copy; no output file, so the attachment is never changed); xdg-open here ended up in Chromium. Other files use xdg-open.
+    const img = /\.(jpe?g|png|webp|gif|bmp|avif)$/i.test(r.path);
+    try { await exec("sh", ["-c", (img ? 'if command -v satty >/dev/null 2>&1; then setsid satty --filename "$1" >/dev/null 2>&1 & exit 0; fi; ' : "") + 'exec setsid xdg-open "$1" >/dev/null 2>&1', "sh", r.path]); this.flash = `opened ${a.name}`; } catch (err) { this.flash = `saved to ${r.path}`; }
+    cx.notify();
+  }
   openLink(url, cx) { if (!url) { this.flash = "no link"; return; } cx.open_url(url); this.flash = "opened link"; }
 
   key(e, cx) {
@@ -401,6 +416,7 @@ export default class Memo extends View {
       if (k === "c" && !ctrl) this.copyText((this.cur?.body ?? "").replace(/\n+$/, ""), "body", cx);
       else if (k === "u") this.copyText(this.urls()[0], "link", cx);
       else if (k === "o") this.openLink(this.urls()[0], cx);
+      else if (k === "f" && !ctrl) this.openAttachment(0, cx);
       else if (k === "j" || k === "down") this.scrollView(1);
       else if (k === "k" || k === "up") this.scrollView(-1);
       else if (ctrl && k === "d") this.scrollView(15);
@@ -419,6 +435,7 @@ export default class Memo extends View {
     }
     if (k === "down" || k === "j") this.move(1, cx);
     else if (k === "up" || k === "k") this.move(-1, cx);
+    else if (k === "f" && !ctrl && this.cur) this.openAttachment(0, cx);
     else if ((k === "enter" || k === "e") && this.cur) this.enterEdit(cx);
     else if (k === "b") this.flip(cx);
     else if (k === "o") this.openLink(this.urls()[0], cx);
@@ -430,7 +447,7 @@ export default class Memo extends View {
     else if (k === "a") { this.showDone = !this.showDone; this.keepSelection(cx); }
     else if (k === "r") this.refresh(cx);
     else if (k === "/") this.search.focus();
-    else if (k === "1" || k === "2" || k === "3" || k === "4" || k === "5") { this.tab = TABS[Number(k) - 1][0]; this.keepSelection(cx); }
+    else if (k === "1" || k === "2" || k === "3" || k === "4") { this.tab = TABS[Number(k) - 1][0]; this.keepSelection(cx); }
     else return;
     cx.stop_propagation(); cx.notify();
   }
@@ -456,6 +473,7 @@ export default class Memo extends View {
         .child(div().w(12).flex_none().text_size(11).font_medium().text_color(t.accent).child(i.kind === "note" ? "N" : isDone(i) ? "✓" : "T"))
         .child(div().w(30).flex_none().text_size(10).font_medium().text_color(t.dim).child(i.kind === "task" ? i.cal.toUpperCase() : ""))
         .child(div().flex_1().min_w(0).truncate().text_color(sel ? t.foreground : t.muted).when(i.kind === "task" && isDone(i), (e) => e.text_color(t.dim)).child(i.title))
+        .when((i.att ?? []).length > 0, (e) => e.child(div().flex_none().text_size(11).text_color(t.dim).child("📎")))
         .child(div().flex_none().w(78).text_right().text_size(11).text_color(late ? t.blocked : t.dim).child(i.kind === "task" ? (i.due || "").slice(0, 10) : ""))
         .child(div().flex_none().w(110).truncate().text_right().text_size(11).text_color(t.dim).child(i.cats.join(" ")));
     });
@@ -501,6 +519,10 @@ export default class Memo extends View {
     const ORDER = ["tm", "ynk", "wrk"];
     const bcats = [...new Set([...Object.keys(catCount), ...this.catFilter])].sort((a, b) => { const ia = ORDER.indexOf(a), ib = ORDER.indexOf(b); return (ia < 0 ? 9 : ia) - (ib < 0 ? 9 : ib) || a.localeCompare(b); });
     const counts = { all: this.items.filter((i) => !isBm(i) && (this.showDone || !(i.kind === "task" && isDone(i)))).length };
+    const kb = (n) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
+    const hasAtt = (c?.att ?? []).length > 0;
+    const attRow = () => h_flex().gap(6).items_center().flex_wrap().flex_none().child(caption("Attachments"))
+      .children(c.att.map((a, n) => pill(`att-${n}`, `📎 ${a.name.length > 28 ? a.name.slice(0, 14) + "…" + a.name.slice(-12) : a.name}${a.size ? " · " + kb(a.size) : ""}`, false, (cx) => this.openAttachment(n, cx))));
     const editPane = !c
       ? div().p(14).text_size(12).text_color(t.dim).child(this.curId ? "Loading…" : this.loaded ? "Nothing selected. n new note, t new task." : "Loading…")
       : v_flex().flex_1().min_h(0).p(14).gap(10)
@@ -511,6 +533,7 @@ export default class Memo extends View {
           .child(h_flex().gap(6).items_center().flex_wrap()
             .children([...new Set([...CATS, ...this.items.flatMap((i) => i.cats), ...(this.extraCats ?? []), ...c.cats])].map((cat) => pill(`cat-${cat}`, cat, c.cats.includes(cat), (cx) => this.toggleCat(cat, cx))))
             .child(div().w(130).child(Input.new(this.newcat).h(22).px(8).rounded(6).border_1().border_color(this.focused.has("newcat") ? t.accent : t.border).bg(t.raised).text_size(11).text_color(t.foreground)))))
+        .when(hasAtt, (e) => e.child(attRow()))
         .when(c.kind === "task", (e) => e.child(h_flex().gap(18).items_start().flex_none().flex_wrap()
           .child(v_flex().gap(6).child(caption("Calendar")).child(h_flex().gap(6).children(CALS.map(([n, val]) => pill(`cal-${val}`, n, c.cal === val, (cx) => this.moveTo(val, cx))))))
           .child(v_flex().gap(6).child(caption("Due")).child(pill("due-pick", this.due.value().trim() || "Set date…", this.calOpen, (cx) => { this.calOpen = !this.calOpen; this.dueOrig = this.due.value(); const d = this.dueParts().date; if (this.calOpen && d) this.calendar.set_value(d); this.pickerFocus = this.calOpen; this.pcur = d || today(); if (this.calOpen) this.handle.focus(); cx.notify(); })))
@@ -539,6 +562,7 @@ export default class Memo extends View {
         .when(c.kind === "task" && Boolean(c.due), (e) => e.child(meta(`Due ${c.due}`)))
         .when(c.kind === "task" && Boolean(prioName), (e) => e.child(meta(`${prioName} priority`)))
         .when(c.kind === "task", (e) => e.child(meta(statusName ?? ""))))
+      .when(hasAtt, (e) => e.child(attRow()))
       .child(div().h(1).flex_none().bg(t.border))
       .child(div().id("memo-view").flex_1().min_h(0).overflow_hidden()
         .on_scroll_wheel((e, cx) => { const dy = e.delta_lines?.y ?? e.delta.y; if (dy) { this.scrollView(dy < 0 ? 3 : -3); cx.notify(); } })
@@ -549,8 +573,8 @@ export default class Memo extends View {
     const hint = this.helpOpen ? ""
       : this.pickerFocus ? "H J K L day · [ ] hour · , . minute · Enter done · C cancel · 0 no time · x clear"
       : this.typing ? "Tab next field · Ctrl H back · Ctrl L picker"
-      : this.rightFocus && !this.editing ? "O open · U copy link · x done"
-      : "n note · T Y W task · B link · O open · x done";
+      : this.rightFocus && !this.editing ? "O open · U copy link · F attachment · x done"
+      : "n note · T Y W task · B link · O open · x done" + (this.tab === "all" || this.tab === "task" ? ` · A ${this.showDone ? "hide" : "show"} done` : "");
 
     return v_flex().id("memo").track_focus(this.handle).on_key_down((e, cx) => this.key(e, cx))
       .size_full().min_h(0).rounded(10).overflow_hidden().border_1().border_color(t.border).bg(t.background).text_size(13).text_color(t.foreground)
