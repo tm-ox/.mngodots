@@ -269,7 +269,8 @@ export default class WorkspaceStatus extends View {
     const seen = shared("merged-seen") || 0, fresh = this.merged.filter((m) => m.at > seen);
     const space = spaces().find(s => s.active);
     const list = agents();
-    const needs = list.filter(a => a.status === "blocked").length;
+    const snz = shared("snoozed") || {}, isSnz = (a) => snz[a.address] > Date.now();
+    const needs = list.filter(a => a.status === "blocked" && !isSnz(a)).length;
     const label = (icon, text) => h_flex().gap(6).items_center().child(svg(`mods/workspace-chrome/${icon}.svg`).size(13)).child(text);
     return h_flex().size_full().px(14).gap(16).items_center().bg(t.chrome).border_t(1).border_color(t.border).text_size(11.8).text_color(t.muted)
       .child(label(space?.machine ? "server" : "monitor", space?.machine ?? "This computer"))
@@ -290,7 +291,9 @@ export default class WorkspaceStatus extends View {
         .children(this.serving.slice(0, 4).map(v => div().child(`▲ :${v.port} ${v.cwd.split("/").pop()}`)))
         .when(this.serving.length > 4, e => e.child(div().child(`+${this.serving.length - 4}`)))))
       .child(h_flex().gap(6).items_center().child(div().size(6).rounded(3).bg(t.dim)).child(`${list.length} agents`)
-        .when(needs > 0, el => el.child(div().text_color(t.blocked).child(`· ${needs} needs you`))))
+        .when(needs > 0, el => el.child(div().text_color(t.blocked).child(`· ${needs} needs you`)))
+        .when(list.filter(a => a.status === "done").length > 0, el => el.child(div().text_color(t.done).child(`· ${list.filter(a => a.status === "done").length} done`)))
+        .when(list.filter(a => a.status === "working").length > 0, el => el.child(div().text_color(t.working).child(`· ${list.filter(a => a.status === "working").length} working`))))
       .child(div().flex_1())
       .child(div().id("palette").text_color(t.dim).on_click(() => run("app.palette")).child(`${window()?.platform === "macos" ? "⌘" : "Ctrl"} Shift P  commands`));
   }

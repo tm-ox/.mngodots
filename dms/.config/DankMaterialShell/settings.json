@@ -622,5 +622,6 @@
   "lockScreenWallpaperPath": "/home/tm/.config/DankMaterialShell/background.jpg",
   "lockScreenShowPowerActions": false,
   "notificationCompactMode": true,
-  "notificationForegroundLayers": true
+  "notificationForegroundLayers": true,
+  "wallpaperBackgroundColorMode": "surface"
 }

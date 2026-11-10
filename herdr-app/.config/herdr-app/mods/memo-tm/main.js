@@ -131,6 +131,13 @@ export default class Memo extends View {
       const l = await api({ op: "list" });
       this.loaded = true;
       if (l.error) this.error = l.error; else { this.error = null; this.items = l.items; setShared("memo.items", l.items); }
+      // Deep link from the Inbox panel: open on that item (tab All, so tasks are listed).
+      const want = shared("memo-open");
+      if (want) {
+        setShared("memo-open", null);
+        const hit = this.items.find((i) => i.id === want);
+        if (hit) { this.tab = "all"; this.curId = hit.id; this.cur = null; this.note = null; this.state = ""; if (hit.etag) this.load(hit, cx); }
+      }
       if (!this.curId) this.keepSelection(cx);
       else if (this.cur && !this.typing && !this.saving && !Object.keys(this.diff()).length) {
         const fresh = this.items.find((i) => i.id === this.curId);

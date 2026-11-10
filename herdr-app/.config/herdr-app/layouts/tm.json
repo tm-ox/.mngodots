@@ -142,10 +142,24 @@
                       "type": "stack",
                       "children": [
                         {
+                          "id": "inbox",
+                          "type": "block",
+                          "content": {
+                            "mod": "inbox-tm"
+                          }
+                        },
+                        {
+                          "id": "sched",
+                          "type": "block",
+                          "content": {
+                            "mod": "sched-tm"
+                          }
+                        },
+                        {
                           "id": "files",
                           "type": "block",
                           "content": {
-                            "mod": "files"
+                            "mod": "files-tm"
                           }
                         }
                       ],

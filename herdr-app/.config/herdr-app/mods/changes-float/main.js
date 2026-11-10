@@ -165,6 +165,8 @@ export default class Changes extends View {
     if (want) cx.timer.after(50, () => setShared("git-tab", ""));
     const card = shared("git-card"); // header chip click: open the Inbox with that card's filter on
     if (card) { this.card = card; cx.timer.after(50, () => setShared("git-card", "")); }
+    const go = shared("git-open"); // side-panel Inbox row: open that PR once the window is up
+    if (go?.url) { setShared("git-open", null); cx.timer.after(80, (cx) => this.openInbox({ n: go.n, url: go.url, title: go.title, repo: go.repo }, cx)); }
     this.tab = want === "merged" ? "open" : want || "inbox";
     if (want === "merged") cx.timer.after(50, () => setShared("merged-seen", Date.now())); this.info = shared("git-info") || {}; this.remote = shared("git-remote") || {}; this.remoteAt = 0; this.infoAt = 0; this.dsel = -1; this.acts = []; this.order = []; this.repos = null; this.cwdKey = null; this.prLoading = false; this.prAt = 0; this.sel = 0;
     this.files = []; this.rows = []; this.diffWidth = 0; this.message = ""; this.handle = cx.focus_handle();
