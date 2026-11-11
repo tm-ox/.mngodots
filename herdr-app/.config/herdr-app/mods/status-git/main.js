@@ -314,7 +314,7 @@ export default class WorkspaceStatus extends View {
     this.devUp = (this.broker?.dev ?? []).filter((l) => / running/.test(l));
     this.mongoUp = (this.broker?.mongo ?? []).filter((l) => / running /.test(l));
     const label = (icon, text) => h_flex().gap(6).items_center().child(svg(`mods/workspace-chrome/${icon}.svg`).size(13)).child(text);
-    return h_flex().size_full().px(14).gap(16).items_center().bg(t.chrome).border_t(1).border_color(t.border).text_size(11.8).text_color(t.muted)
+    return h_flex().size_full().px(14).gap(16).items_center().bg(t.chrome).border_t(1).border_color(t.border).text_size(12).text_color(t.muted)
       .child(label(space?.machine ? "server" : "monitor", space?.machine ?? "This computer"))
       .when(Boolean(space?.branch), el => el.child(label("branch", space.branch)))
       .when(this.dirty > 0, el => el.child(div().id("dirty").cursor_pointer().text_color(t.blocked).on_click(() => this.showGit("changes")).child(`● ${this.dirty} changed${pinOf() ? " (" + pinOf()[0].split("/").pop() + ")" : ""}`)))

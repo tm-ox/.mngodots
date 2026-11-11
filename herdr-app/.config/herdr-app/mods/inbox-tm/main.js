@@ -391,7 +391,7 @@ export default class InboxPanel extends View {
     const total = s ? s.fix.length + s.toReview.length + s.rerev.length + s.talk.length + s.ready.length : 0;
     const lateN = (this.tasks ?? []).filter((k) => k.due && k.due.slice(0, 10) <= ymd(new Date())).length;
     const iconBtn = (id, text, onClick) => div().id(id).w(24).h(24).flex().items_center().justify_center().flex_none().rounded(6).cursor_pointer().text_size(13).text_color(t.muted).hover((x) => x.bg(t.hover)).on_click(onClick).child(text);
-    const chip = (text, color) => div().flex_none().h(16).px(6).flex().items_center().rounded(5).border_1().border_color(t.border).text_size(10.5).text_color(color).child(text);
+    const chip = (text, color) => div().flex_none().h(16).px(6).flex().items_center().rounded(5).border_1().border_color(t.border).text_size(11).text_color(color).child(text);
     const colorOf = { fix: t.blocked, review: t.blocked, rerev: t.blocked, talk: t.working, ready: t.done, overdue: t.blocked, today: t.working, running: t.done, stopped: t.dim, on: t.done, pending: t.blocked };
     const ciTail = (d) => (d.ci === "fail" ? "CI failing" : d.decision === "CHANGES_REQUESTED" ? "changes asked" : "");
     const tailOf = { fix: ciTail, review: (d) => (Date.now() - Date.parse(d.createdAt) > 3 * DAY ? "waiting" : ""), rerev: (d) => d.flag };
@@ -413,7 +413,7 @@ export default class InboxPanel extends View {
     const todayS = ymd(new Date());
     const trow = (it) => {
       const k = it.k, on = focused && this.sel === it.id, due = (k.due || "").slice(0, 10), late = due && due < todayS, tod = due === todayS;
-      const box = div().id("cb:" + it.id).flex_none().w(14).h(14).rounded(4).border_1().border_color(on ? t.accent : t.dim).cursor_pointer().hover((x) => x.bg(t.hover))
+      const box = div().id("cb:" + it.id).flex_none().w(14).h(14).rounded(5).border_1().border_color(on ? t.accent : t.dim).cursor_pointer().hover((x) => x.bg(t.hover))
         .on_click((_e, cx) => { cx.stop_propagation(); this.complete(k, cx); });
       return h_flex().id(it.id).flex_none().px(10).py(4).gap(7).items_center().rounded(7).cursor_pointer().bg(on ? t.selected : t.background).hover((x) => x.bg(on ? t.selected : t.hover))
         .on_click(() => this.activate(it))
@@ -501,9 +501,9 @@ export default class InboxPanel extends View {
     // Explicit height (a scroll container will not shrink to its content): headers 31px, schedule rows 29px, server rows 47px, capped.
     const pinH = Math.min(300, 10 + items.filter((it) => PINNED.includes(it.key)).reduce((a, it) => a + (it.head ? 31 : it.kind === "dev" || it.kind === "bm" || it.kind === "srv" ? 47 : 29), 0));
     const addRow = h_flex().id("inbox-add-row").flex_none().px(6).py(4).gap(6).items_center().rounded(7).border_1().border_color(t.accent).bg(t.raised)
-      .child(div().id("inbox-add-cal").flex_none().h(18).px(6).flex().items_center().rounded(5).border_1().border_color(t.border).cursor_pointer().text_size(10.5).text_color(t.accent)
+      .child(div().id("inbox-add-cal").flex_none().h(18).px(6).flex().items_center().rounded(5).border_1().border_color(t.border).cursor_pointer().text_size(11).text_color(t.accent)
         .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click((_e, cx) => this.cycleCal(cx)).child(this.cal.toUpperCase()))
-      .child(Input.new(this.addState).flex_1().min_w(0).h(24).text_size(12.5).text_color(t.foreground));
+      .child(Input.new(this.addState).flex_1().min_w(0).h(24).text_size(12.8).text_color(t.foreground));
     const draw = (it) => (it.head ? head(it) : it.kind === "add" ? addRow : it.kind === "appr" ? arow(it) : it.kind === "health" ? hrow(it) : it.kind === "task" ? trow(it) : it.kind === "dev" ? drow(it) : it.kind === "srv" ? vrow(it) : it.kind === "bm" ? brow(it) : it.kind === "job" ? jrow(it) : it.kind === "more" ? more(it) : row(it));
     return v_flex().id("inbox-panel").track_focus(this.handle).on_key_down((e, cx) => this.key(e, cx)).size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(focused ? t.accent : t.border).text_color(t.foreground).text_size(13)
       .child(h_flex().h(30).flex_none().px(14).gap(8).items_center().border_b(1).border_color(t.border)

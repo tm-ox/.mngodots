@@ -745,7 +745,7 @@ export default class Changes extends View {
       ])))
       .child(h_flex().gap(10).items_center()
       .child(div().flex_none().text_color(t.foreground).child(ask.kind === "pull" ? `Pull ${tilde(ask.path)} (fast-forward only)?` : ast?.changed ? `Commit ${ast.changed} changed file${ast.changed === 1 ? "" : "s"} and push ${tilde(ask.path)}, message:` : `Push ${ast?.ahead ?? 0} commit${ast?.ahead === 1 ? "" : "s"} from ${tilde(ask.path)}?`))
-      .when(Boolean(this.rInput) && ask.kind === "ship" && Boolean(ast?.changed), (e) => e.child(Input.new(this.rInput).flex_1().min_w(0).h(32).px(10).rounded(8).border_1().border_color(t.accent).bg(t.background).text_size(12.8).text_color(t.foreground)))
+      .when(Boolean(this.rInput) && ask.kind === "ship" && Boolean(ast?.changed), (e) => e.child(Input.new(this.rInput).flex_1().min_w(0).h(32).px(10).rounded(9).border_1().border_color(t.accent).bg(t.background).text_size(12.8).text_color(t.foreground)))
       .child(div().flex_1())
       .child(act("repo-yes", "Confirm", (cx) => this.confirmRepo(cx), t.accent))
       .child(act("repo-no", "Cancel", (cx) => this.cancelRepo(cx))));
@@ -810,7 +810,7 @@ export default class Changes extends View {
     const pickable = (i0, e) => e.when(this.dsel === i0, (x) => x.bg(t.selected));
     const label = (text, color) => div().px(2).text_size(12).font_semibold().text_color(color ?? t.muted).child(String(text).toUpperCase());
     const chip = (text, color) => div().px(7).py(2).rounded(5).border_1().border_color(color ?? t.border).text_size(11).text_color(color ?? t.muted).child(text);
-    const tile = (n, name, sub, color, fn) => { const i0 = reg(fn); return v_flex().id(`tile-${i0}`).cursor_pointer().hover((s) => s.bg(t.hover)).on_click((_e, cx) => { this.dsel = i0; fn(cx); cx.notify(); }).flex_1().min_w(0).gap(2).px(14).py(10).rounded(8).bg(t.background).border_1().border_color(this.dsel === i0 ? t.accent : n > 0 && color ? color + "55" : t.border)
+    const tile = (n, name, sub, color, fn) => { const i0 = reg(fn); return v_flex().id(`tile-${i0}`).cursor_pointer().hover((s) => s.bg(t.hover)).on_click((_e, cx) => { this.dsel = i0; fn(cx); cx.notify(); }).flex_1().min_w(0).gap(2).px(14).py(10).rounded(7).bg(t.background).border_1().border_color(this.dsel === i0 ? t.accent : n > 0 && color ? color + "55" : t.border)
       .child(div().text_size(24).font_semibold().text_color(n > 0 && color ? color : t.foreground).child(String(n)))
       .child(div().text_size(11).text_color(t.muted).child(name))
       .child(div().h(14).text_size(10).text_color(t.dim).truncate().child(sub ?? "")); };
@@ -1122,7 +1122,7 @@ export default class Changes extends View {
     const c = det.confirm;
     const confirm = c && h_flex().flex_none().px(14).py(8).gap(10).items_center().border_b(1).border_color(t.border).bg(t.raised)
       .child(div().text_size(12).text_color(t.foreground).child(({ approve: `Approve #${det.n}?`, comment: `Comment on #${det.n}:`, request: `Request changes on #${det.n}:`, merge: `Merge #${det.n} with a ${c.method} commit?` })[c.kind]))
-      .when(c.kind === "comment" || c.kind === "request" || c.kind === "approve", (e) => e.child(div().id("pd-input").flex_1().min_w(0).h(30).px(10).flex().items_center().rounded(8).border_1().border_color(this.typing ? t.accent : t.border).cursor_text().on_mouse_down("left", (_e, cx) => cx.stop_propagation()).child(Input.new(this.dInput).h_full().text_size(12).text_color(t.foreground))))
+      .when(c.kind === "comment" || c.kind === "request" || c.kind === "approve", (e) => e.child(div().id("pd-input").flex_1().min_w(0).h(30).px(10).flex().items_center().rounded(9).border_1().border_color(this.typing ? t.accent : t.border).cursor_text().on_mouse_down("left", (_e, cx) => cx.stop_propagation()).child(Input.new(this.dInput).h_full().text_size(12).text_color(t.foreground))))
       .when(c.kind === "merge", (e) => e.child(div().text_size(11).text_color(t.dim).child("1 merge | 2 squash | 3 rebase")).child(div().flex_1()))
       .child(btn("pd-go", "Confirm", (cx) => this.runAction(cx), t.accent, "Enter"))
       .child(btn("pd-cancel", "Cancel", (cx) => this.cancelAction(cx), null, "Backspace"));
@@ -1169,7 +1169,7 @@ export default class Changes extends View {
         .child(div().w(1).flex_none().h_full().bg(t.border))
         .child(v_flex().id("pr-draft").flex_1().min_w(0).min_h(0).overflow_y_scrollbar().p(16).gap(14).bg(t.raised)
           .when(Boolean(draftPost), (e) => e.child(section(posted ? "Already posted" : det.local ? "Will be posted · passport" : "Will be posted", t.muted)))
-          .when(Boolean(draftPost), (e) => e.child(v_flex().id("pr-draft-post").p(12).rounded(8).border_1().border_color(posted ? t.border : t.accent)
+          .when(Boolean(draftPost), (e) => e.child(v_flex().id("pr-draft-post").p(12).rounded(7).border_1().border_color(posted ? t.border : t.accent)
             .child(TextView.markdown("pr-draft-post-md", draftPost))))
           .when(Boolean(draftMain), (e) => e.child(section("Draft from rev · notes", t.muted)))
           .when(Boolean(draftMain), (e) => e.child(TextView.markdown("pr-draft-md", draftMain.slice(0, 20000)))));
@@ -1269,7 +1269,7 @@ export default class Changes extends View {
   issuesBody(t) {
     if (this.idet) return this.issueDetail(t);
     const list = this.iList(), multi = (this.issues?.length ?? 0) > 1, n = this.inew;
-    const box = (id, input, on) => div().id(id).h(32).px(10).flex().items_center().rounded(8).border_1().border_color(on ? t.accent : t.border).cursor_text().on_mouse_down("left", (_e, cx) => cx.stop_propagation()).child(Input.new(input).h_full().text_size(12).text_color(t.foreground));
+    const box = (id, input, on) => div().id(id).h(32).px(10).flex().items_center().rounded(9).border_1().border_color(on ? t.accent : t.border).cursor_text().on_mouse_down("left", (_e, cx) => cx.stop_propagation()).child(Input.new(input).h_full().text_size(12).text_color(t.foreground));
     return v_flex().flex_1().min_h(0)
       .when(Boolean(n), (e) => e.child(v_flex().flex_none().p(10).gap(8).border_b(1).border_color(t.border)
         .child(div().text_size(11).text_color(t.dim).child(`New issue in ${n.name}${n.busy ? " · creating…" : ""}`))
@@ -1319,7 +1319,7 @@ export default class Changes extends View {
       const color = { review: t.blocked, rerev: t.blocked, talk: t.working, ready: t.done, fix: t.blocked }[c.k];
       const sub = c.k === "review" && oldest ? `oldest ${ago(oldest.createdAt)}` : "";
       const old = c.k === "review" && oldest && Date.now() - Date.parse(oldest.createdAt) > 3 * day;
-      return h_flex().id(`ib-card-${c.k}`).flex_1().min_w(0).h(54).px(14).gap(12).items_center().rounded(8).bg(t.background).border_1().border_color(on ? t.accent : n > 0 ? color + "55" : t.border).cursor_pointer().when(!on, (e) => e.hover((x) => x.bg(t.hover)))
+      return h_flex().id(`ib-card-${c.k}`).flex_1().min_w(0).h(54).px(14).gap(12).items_center().rounded(7).bg(t.background).border_1().border_color(on ? t.accent : n > 0 ? color + "55" : t.border).cursor_pointer().when(!on, (e) => e.hover((x) => x.bg(t.hover)))
         .on_click((_e, cx) => { this.card = on ? null : c.k; this.sel = 0; cx.notify(); })
         .child(div().h(30).flex_none().flex().items_center().text_size(32).font_semibold().text_color(n > 0 ? color : t.dim).child(String(n)))
         .child(v_flex().flex_1().min_w(0).h(30).gap(1)
@@ -1393,7 +1393,7 @@ export default class Changes extends View {
         .when(!this.open && this.files.length > 0, (e) => e.child(div().absolute().top(6).px(12).text_color(t.dim).child("Select a file to view its changes"))))
       .when(Boolean(this.note), (e) => e.child(div().px(10).pb(8).text_size(11).text_color(t.ansi1).child(this.note)))
       .child(h_flex().flex_none().p(10).gap(8).border_t(1).border_color(t.border)
-        .child(div().id("commit-message").flex_1().min_w(0).h(32).px(10).flex().items_center().rounded(8).border_1().border_color(this.typing ? t.accent : t.border).cursor_text().on_mouse_down("left", (_e, cx) => cx.stop_propagation()).child(Input.new(this.input).h_full().text_size(12).text_color(t.foreground)))
-        .child(div().id("commit").h(32).px(14).flex().items_center().rounded(8).bg(enabled ? t.solid : t.raised).text_color(enabled ? t.solid_foreground : t.dim).text_size(12).when(enabled, (e) => e.cursor_pointer()).on_click((_e, cx) => this.commit(cx)).child(this.busy ? "Committing…" : "Commit")));
+        .child(div().id("commit-message").flex_1().min_w(0).h(32).px(10).flex().items_center().rounded(9).border_1().border_color(this.typing ? t.accent : t.border).cursor_text().on_mouse_down("left", (_e, cx) => cx.stop_propagation()).child(Input.new(this.input).h_full().text_size(12).text_color(t.foreground)))
+        .child(div().id("commit").h(32).px(14).flex().items_center().rounded(6).bg(enabled ? t.solid : t.raised).text_color(enabled ? t.solid_foreground : t.dim).text_size(12).when(enabled, (e) => e.cursor_pointer()).on_click((_e, cx) => this.commit(cx)).child(this.busy ? "Committing…" : "Commit")));
   }
 }
