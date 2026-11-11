@@ -288,7 +288,8 @@ export default class InboxPanel extends View {
     const push = (key, name, n, counts, rows, force) => { if (!n && !force) return; out.push({ id: "h:" + key, head: true, key, name, n, counts }); if (!this.folded.has(key)) out.push(...rows); };
     const inb = this.inb, bk = shared("broker");
     // Broker requests waiting for tm on tm-serve (read only; tm answers in gb-ok) plus the broker health line.
-    if (bk) push("appr", "Approvals", bk.queue.length, [["pending", bk.queue.length]].filter(([, c]) => c), [...bk.queue.map((q) => ({ id: "q:" + q.id, key: "appr", kind: "appr", q })), { id: "k:health", key: "appr", kind: "health", bk }], true);
+    const bkBad = Boolean(bk) && (!bk.ok || !bk.syncAt || Date.now() - bk.syncAt > 2 * 3600e3); // the health row shows only when something is wrong
+    if (bk) push("appr", "Approvals", bk.queue.length, [["pending", bk.queue.length]].filter(([, c]) => c), [...bk.queue.map((q) => ({ id: "q:" + q.id, key: "appr", kind: "appr", q })), ...(bkBad ? [{ id: "k:health", key: "appr", kind: "health", bk }] : [])], bkBad);
     if (inb) {
       const s = sections(inb);
       const cats = [["fix", s.fix], ["review", s.toReview], ["rerev", s.rerev], ["talk", s.talk], ["ready", s.ready]];
