@@ -132,7 +132,6 @@ export default class InboxPanel extends View {
       const ask = shared("inbox-open-dev") || 0; // the status-bar servers chip: unfold Dev servers
       if (ask > (this.devAsk ?? Date.now())) { this.folded.delete("dev"); this.devOpenAt = Date.now(); saveFolded(this.folded); }
       this.devAsk = Math.max(ask, this.devAsk ?? 0);
-      if (!this.handle.is_focused() && AUTO_FOLD.some((k) => !this.folded.has(k)) && Date.now() - this.devOpenAt > 60000) this.collapseAuto();
       cx.notify(); // also keeps the relative ages and "new" marks current
     });
   }
@@ -288,8 +287,7 @@ export default class InboxPanel extends View {
     const push = (key, name, n, counts, rows, force) => { if (!n && !force) return; out.push({ id: "h:" + key, head: true, key, name, n, counts }); if (!this.folded.has(key)) out.push(...rows); };
     const inb = this.inb, bk = shared("broker");
     // Broker requests waiting for tm on tm-serve (read only; tm answers in gb-ok) plus the broker health line.
-    const bkBad = Boolean(bk) && (!bk.ok || !bk.syncAt || Date.now() - bk.syncAt > 2 * 3600e3); // the health row shows only when something is wrong
-    if (bk) push("appr", "Approvals", bk.queue.length, [["pending", bk.queue.length]].filter(([, c]) => c), [...bk.queue.map((q) => ({ id: "q:" + q.id, key: "appr", kind: "appr", q })), ...(bkBad ? [{ id: "k:health", key: "appr", kind: "health", bk }] : [])], bkBad);
+    if (bk) push("appr", "Approvals", bk.queue.length, [["pending", bk.queue.length]].filter(([, c]) => c), [...bk.queue.map((q) => ({ id: "q:" + q.id, key: "appr", kind: "appr", q })), ], false);
     if (inb) {
       const s = sections(inb);
       const cats = [["fix", s.fix], ["review", s.toReview], ["rerev", s.rerev], ["talk", s.talk], ["ready", s.ready]];
@@ -412,10 +410,10 @@ export default class InboxPanel extends View {
       const d = it.d, short = d.repo.split("/")[1] ?? d.repo, fresh = d.act > seenAt(d), on = focused && this.sel === it.id, tail = tailOf[it.cat]?.(d);
       return v_flex().id(it.id).flex_none().px(10).py(5).gap(2).rounded(7).cursor_pointer().bg(on ? t.selected : t.background).hover((x) => x.bg(on ? t.selected : t.hover))
         .on_click(() => this.open(d))
-        .child(div().min_w(0).truncate().text_color(on ? t.foreground : t.muted).child(d.title))
         .child(h_flex().gap(6).items_center().min_w(0)
           .child(div().flex_none().text_size(11).text_color(t.accent).child(`${short} #${d.n}`))
           .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(t.dim).child(d.author)))
+        .child(div().min_w(0).truncate().text_color(on ? t.foreground : t.muted).child(d.title))
         .child(h_flex().gap(5).items_center().min_w(0)
           .when(it.cat === "review" && !d.my && this.drafts.has(`${short}#${d.n}`), (el) => el.child(chip("drafted", t.accent)))
           .child(chip(LABEL[it.cat], it.cat === "wait" ? t.dim : colorOf[it.cat]))
@@ -512,7 +510,7 @@ export default class InboxPanel extends View {
     };
     const items = this.items();
     // Explicit height (a scroll container will not shrink to its content): headers 31px, schedule rows 29px, server rows 47px, capped.
-    const pinWant = 26 + items.filter((it) => PINNED.includes(it.key)).reduce((a, it) => a + (it.head ? 33 : it.kind === "dev" || it.kind === "bm" || it.kind === "srv" ? 50 : 31), 0), pinH = Math.min(520, pinWant), pinCapped = pinWant > 520;
+    const bkNow = shared("broker"), pinWant = (bkNow ? 48 : 26) + items.filter((it) => PINNED.includes(it.key)).reduce((a, it) => a + (it.head ? 33 : it.kind === "dev" || it.kind === "bm" || it.kind === "srv" ? 50 : 31), 0), pinH = Math.min(520, pinWant), pinCapped = pinWant > 520;
     const addRow = h_flex().id("inbox-add-row").flex_none().px(6).py(4).gap(6).items_center().rounded(7).border_1().border_color(t.accent).bg(t.raised)
       .child(div().id("inbox-add-cal").flex_none().h(18).px(6).flex().items_center().rounded(5).border_1().border_color(t.border).cursor_pointer().text_size(11).text_color(t.accent)
         .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click((_e, cx) => this.cycleCal(cx)).child(this.cal.toUpperCase()))
@@ -530,7 +528,7 @@ export default class InboxPanel extends View {
         .when(Boolean(s) && items.length === 0, (el) => el.child(div().p(8).text_size(12).text_color(t.dim).child("Nothing needs you right now.")))
         .when(Boolean(s) && s.covered > 0, (el) => el.child(div().px(10).pt(10).text_size(11).text_color(t.dim).child(`${s.covered} more already approved by others`)))
         .when(Boolean(this.err && s), (el) => el.child(div().px(10).pt(8).text_size(11).text_color(t.blocked).child(this.err))))
-      .when(items.some((it) => PINNED.includes(it.key)), (el) => el.child(v_flex().id("inbox-pinned").flex_none().h(pinH).when(pinCapped, (e) => e.overflow_y_scrollbar()).when(!pinCapped, (e) => e.overflow_hidden()).px(8).pb(6).pt(2).gap(1).border_t(1).border_color(t.border).children(items.filter((it) => PINNED.includes(it.key)).map(draw))))
+      .when(items.some((it) => PINNED.includes(it.key)) || Boolean(bkNow), (el) => el.child(v_flex().id("inbox-pinned").flex_none().h(pinH).when(pinCapped, (e) => e.overflow_y_scrollbar()).when(!pinCapped, (e) => e.overflow_hidden()).px(8).pb(6).pt(2).gap(1).border_t(1).border_color(t.border).children([...items.filter((it) => PINNED.includes(it.key)).map(draw), ...(bkNow ? [hrow({ id: "k:health", bk: bkNow })] : [])])))
       .child(div().flex_none().h(26).px(14).flex().items_center().border_t(1).border_color(focused ? t.border : t.background).truncate().text_size(11).text_color(t.dim).child(focused ? "j k move (wraps) · g G first / last · ← → fold · a fold all · Enter open (approval: gb-ok · schedule: manage) · n new task · x tick · d delete task · s stop · t tunnel (tm-serve) · e servers · r restart / start (server) or refresh · Esc leave" : ""));
   }
 }
