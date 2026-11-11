@@ -66,7 +66,7 @@ const HELP = [
     ["Esc", "Close the mod."],
   ]],
   ["tm-serve rows", [
-    ["s", "Stop it on tm-serve (dev-server stop / throwaway-mongo stop). Press twice to confirm."],
+    ["s", "Stop it on tm-serve (dev-server stop / throwaway-mongo stop). Press twice within 3 s to confirm."],
     ["t · Enter", "Dev server: open a tab running ssh -L for its port, then browse http://localhost:<port>. Close the tab to end the tunnel."],
   ]],
   ["Bookmark rows", [
@@ -78,7 +78,7 @@ const HELP = [
   ]],
   ["Running server rows", [
     ["Enter", "Open http://localhost:<port> in the browser."],
-    ["r", "Restart by re-running its command line. Press twice to confirm."],
+    ["r", "Restart by re-running its command line. Press twice within 3 s to confirm."],
     ["s", "Stop the process."],
     ["b", "Bookmark it (opens the form, prefilled with its project folder)."],
   ]],
@@ -167,9 +167,9 @@ export default class DevServers extends View {
   }
 
   // Stop on tm-serve: tm's key or click only, second press confirms. Tunnel: a visible tab running ssh -L that tm closes.
-  stopServe(it) {
+  stopServe(it, cx) {
     const mark = "srv" + it.type + it.id;
-    if (this.askSt !== mark) { this.askSt = mark; return notify({ title: `Stop ${it.type === "dev" ? ":" + it.id : it.id} on tm-serve?`, body: "Press s (or Stop) again to confirm.", level: "warning" }); }
+    if (this.askSt !== mark) { this.askSt = mark; cx.timer.after(3000, (cx) => { if (this.askSt === mark) { this.askSt = null; cx.notify(); } }); return; }
     this.askSt = null;
     const cmd = it.type === "dev" ? "dev-server" : "throwaway-mongo";
     exec("sh", ["-c", '"$HOME/.local/bin/$1" stop "$2"', "sh", cmd, it.id], { on: "tm-serve" })
@@ -236,8 +236,9 @@ export default class DevServers extends View {
 
   restartListener(l, cx) {
     if (this.askRs !== l.pid) {
-      this.askRs = l.pid;
-      return notify({ title: `Restart :${l.port}?`, body: "This re-runs its command line without the original quoting, which can differ from what you started. Bookmark it for a reliable restart. Press r (or Restart) again to confirm.", level: "warning" });
+      const pid = l.pid;
+      this.askRs = pid; cx.timer.after(3000, (cx) => { if (this.askRs === pid) { this.askRs = null; cx.notify(); } });
+      return;
     }
     this.askRs = null;
     const folder = l.cwd || l.root, cmd = l.cmd;
@@ -318,7 +319,7 @@ export default class DevServers extends View {
     const items = this.flat(), it = items[this.at];
     if (k === "escape") return closeOverlay(props().overlay);
     if (it?.kind === "srv" && ["r", "s", "b", "o", "d", "t", "enter"].includes(k)) {
-      if (k === "s") this.stopServe(it); else if (k === "t" || k === "enter") this.tunnel(it);
+      if (k === "s") this.stopServe(it, cx); else if (k === "t" || k === "enter") this.tunnel(it);
       cx.stop_propagation(); cx.notify(); return;
     }
     if (k === "down" || k === "j") this.at = Math.min(items.length - 1, this.at + 1);
@@ -374,7 +375,7 @@ export default class DevServers extends View {
       nodes.push(row(`ls-${l.pid}-${l.port}`, i, [
         dot(t.ansi2),
         div().w(64).flex_none().text_size(12).text_color(t.accent).child(`:${l.port}`),
-        div().flex_1().min_w(0).truncate().text_color(i === this.at ? t.foreground : t.muted).child(short(l)),
+        this.askRs === l.pid ? div().flex_1().min_w(0).truncate().text_size(11).text_color(t.blocked).child("press r again to restart (re-runs its command line)") : div().flex_1().min_w(0).truncate().text_color(i === this.at ? t.foreground : t.muted).child(short(l)),
         div().flex_none().w(60).text_size(11).text_color(t.dim).child("laptop"),
         div().flex_none().w(48).text_right().text_size(11).text_color(t.dim).child(age(l.up)),
         act(`o-${l.pid}-${l.port}`, "Open", () => this.open(l)),
@@ -389,10 +390,10 @@ export default class DevServers extends View {
       nodes.push(row(`srv-${it.type}-${it.id}`, i, [
         dot(it.up ? t.ansi2 : t.dim),
         div().w(64).flex_none().truncate().text_size(12).text_color(t.accent).child(it.type === "dev" ? `:${it.id}` : it.id),
-        div().flex_1().min_w(0).truncate().text_color(i === this.at ? t.foreground : t.muted).child(it.type === "dev" ? (it.up ? it.text : "dead") : (it.up ? `mongo ${it.text}` : "mongo dead")),
+        this.askSt === "srv" + it.type + it.id ? div().flex_1().min_w(0).truncate().text_size(11).text_color(t.blocked).child("press s again to stop") : div().flex_1().min_w(0).truncate().text_color(i === this.at ? t.foreground : t.muted).child(it.type === "dev" ? (it.up ? it.text : "dead") : (it.up ? `mongo ${it.text}` : "mongo dead")),
         div().flex_none().w(60).text_size(11).text_color(t.dim).child("tm-serve"),
         ...(it.type === "dev" && it.up ? [act(`tn-${it.id}`, "Tunnel", () => this.tunnel(it))] : []),
-        act(`ss-${it.type}-${it.id}`, "Stop", () => this.stopServe(it)),
+        act(`ss-${it.type}-${it.id}`, "Stop", (cx) => this.stopServe(it, cx)),
       ]));
     });
     if (this.loaded && !rows.length) nodes.push(div().px(10).py(8).text_size(12).text_color(t.dim).child(this.error ?? "Nothing else is listening."));
