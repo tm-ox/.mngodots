@@ -90,7 +90,7 @@ function sections(inb) {
   const fix = pick(mine, (d) => d.decision === "CHANGES_REQUESTED" || d.ci === "fail");
   const toReview = pick(review, (d) => !d.covered).sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
   const rerev = pick(waiting, (d) => Boolean(d.flag));
-  const talk = pick([...waiting, ...mine], (d) => d.act > seenAt(d));
+  const talk = pick(waiting, (d) => d.act > seenAt(d)); // comments on PRs tm reviewed; comments on tm's own PRs are waiting on others
   const ready = !SHOW_READY ? [] : pick(mine, (d) => d.ci !== "wait" && (d.appr.length > 0 || d.decision === "APPROVED"));
   const covered = review.filter((d) => d.covered && !take.has(d.url)).length;
   // Nothing for tm to do: own PRs with nothing to fix, PRs tm reviewed with no new commits, threads where tm spoke last
@@ -400,7 +400,7 @@ export default class InboxPanel extends View {
 
   render(cx) {
     const t = theme(), inb = this.inb, s = inb ? sections(inb) : null, focused = this.handle.is_focused();
-    const total = s ? s.fix.length + s.toReview.length + s.rerev.length + s.talk.length + s.ready.length : 0;
+    const total = s ? s.toReview.length + s.rerev.length + s.talk.length + s.ready.length : 0;
     const lateN = (this.tasks ?? []).filter((k) => k.due && k.due.slice(0, 10) <= ymd(new Date())).length;
     const iconBtn = (id, text, onClick) => div().id(id).w(24).h(24).flex().items_center().justify_center().flex_none().rounded(6).cursor_pointer().text_size(13).text_color(t.muted).hover((x) => x.bg(t.hover)).on_click(onClick).child(text);
     const chip = (text, color) => div().flex_none().h(16).px(6).flex().items_center().rounded(5).border_1().border_color(t.border).text_size(11).text_color(color).child(text);
