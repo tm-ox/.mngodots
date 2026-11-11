@@ -432,8 +432,36 @@ export default class InboxPanel extends View {
     else if (k === "up" || k === "k") { if (n) d.idx = (d.idx - 1 + n) % n; this.confirm = false; }
     else if (k === "r") { if (!d.busy) this.loadDetail(cx); }
     else if (k === "b") { this.openGbOk(); }
+    else if (k === "a" || k === "d") {
+      const q = d.list[d.idx];
+      if (!q || this.running || Date.now() < this.pauseUntil) { cx.stop_propagation(); return; }
+      if (k === "a" && q.problems?.length) { notify({ title: "Cannot approve", body: "This request failed validation; reject it or leave it", level: "info" }); cx.stop_propagation(); return; }
+      this.marks.set(q.id, { act: k, hash: q.hash }); this.confirm = false; this.results = null;
+    }
+    else if (k === "u") { const q = d.list[d.idx]; if (q) this.marks.delete(q.id); this.confirm = false; }
+    else if (k === "enter") {
+      if (this.running || Date.now() < this.pauseUntil || !this.marks.size) { cx.stop_propagation(); return; }
+      if (this.confirm) this.runDecide(cx); else this.confirm = true;
+    }
     else return;
     cx.stop_propagation(); cx.notify();
+  }
+
+  // One ssh -tt per batch on a fresh connection (ControlPath=none), so the confirm-on-use dialog for the key appears every time.
+  // tm-serve re-checks each hash and the item itself; nothing here approves anything by itself.
+  runDecide(cx) {
+    const marks = [...this.marks];
+    if (!marks.every(([id, m]) => ID_RE.test(id) && HASH_RE.test(m.hash) && (m.act === "a" || m.act === "d"))) { this.marks.clear(); this.confirm = false; return; }
+    const specs = marks.map(([id, m]) => `${id}:${m.hash}:${m.act === "a" ? "a" : "r"}`);
+    this.running = true; this.confirm = false; this.results = null;
+    exec("ssh", ["-tt", "-o", "ControlPath=none", REV_HOST, "GB_SOURCE=mod ~/.local/bin/gh-broker decide " + specs.join(" ")], { timeout: 180000 })
+      .then((r) => {
+        const got = new Map();
+        for (const l of String(r.stdout ?? "").split(/\r?\n/)) { const m = /^RESULT (\S+) (approved|rejected|refused)$/.exec(l.trim()); if (m) got.set(m[1], m[2]); }
+        this.results = marks.map(([id, m]) => ({ id, text: got.get(id) ?? "no answer (dialog declined or ssh failed)", want: m.act === "a" ? "approved" : "rejected" }));
+      })
+      .catch((e) => { this.results = marks.map(([id]) => ({ id, text: "failed: " + clean(e.message ?? e, 100), want: "" })); })
+      .then(() => { this.marks.clear(); this.running = false; setShared("broker-ask", Date.now()); this.loadDetail(this.cxRef); this.cxRef.notify(); });
   }
 
   renderDet(t, focused) {
@@ -468,7 +496,14 @@ export default class InboxPanel extends View {
       }
       if (q.title || q.body) kids.push(box("From agent, untrusted (plain text)", [...(q.title ? [div().min_w(0).text_size(13).font_semibold().text_color(t.foreground).child(clean(q.title, 300)), div().h(4)] : []), ...lines(q.body)], t.border));
     }
-    const hint = keyHints(this.hintText(), t);
+    const na = [...this.marks.values()].filter((m) => m.act === "a").length, nr = this.marks.size - na;
+    const summary = [na ? `approve ${na}` : "", nr ? `reject ${nr}` : ""].filter(Boolean).join(", ");
+    const shortId = (id) => id.slice(9, 15) + "-" + id.slice(16);
+    const hint = this.running ? div().text_size(12).text_color(t.working).child("Waiting for tm-serve… answer the key dialog")
+      : this.confirm ? h_flex().gap(10).items_center().min_w(0).child(div().flex_1().min_w(0).truncate().text_size(12).text_color(t.working).child(`${summary}: ${[...this.marks.keys()].map(shortId).join(" ")}`)).child(keyHints("Enter confirm · Esc cancel", t))
+      : keyHints(this.hintText(), t);
+    if (this.results) kids.unshift(box("Result", this.results.map((r) => div().min_w(0).text_size(12).text_color(r.text === r.want ? t.done : t.blocked).child(`${shortId(r.id)}  ${clean(r.text, 120)}`)), t.border));
+    if (this.marks.size && !this.confirm && !this.running) kids.push(div().px(4).text_size(11).text_color(t.dim).child(`marked: ${summary}. Enter asks to confirm.`));
     return v_flex().id("inbox-panel").track_focus(this.handle).on_key_down((e, cx) => this.key(e, cx)).size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(focused ? t.accent : t.border).text_color(t.foreground).text_size(13)
       .child(h_flex().h(30).flex_none().px(12).gap(8).items_center().border_b(1).border_color(t.border)
         .child(div().flex_none().text_size(12).font_medium().text_color(t.accent).child(n ? `Approval ${d.idx + 1}/${n}` : "Approvals"))
@@ -477,7 +512,7 @@ export default class InboxPanel extends View {
       .child(div().flex_none().min_h(30).px(10).py(4).flex().items_center().border_t(1).border_color(t.border).child(hint));
   }
 
-  hintText() { return "j/k next · r refresh · b gb-ok · Esc back"; }
+  hintText() { return this.marks.size ? "a approve · d reject · u clear · Enter go · j/k next · Esc back" : "a approve · d reject · j/k next · r refresh · b gb-ok · Esc back"; }
 
   after150(cmd) { this.cxRef?.timer.after(150, () => run(cmd)); }
 
