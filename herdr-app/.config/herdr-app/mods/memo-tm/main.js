@@ -75,12 +75,12 @@ const HELP = [
     ["F", "Open the first attachment."],
     ["Enter · e", "Edit."],
     ["x · B · n · T Y W", "Same as in the list."],
-    ["Ctrl H", "Back to the list."],
+    ["Backspace or Ctrl H", "Back to the list."],
   ]],
   ["Editing", [
     ["Tab · Shift Tab", "Next or previous field (title, due, body)."],
     ["Ctrl S", "Save now. Typing saves by itself about half a second after you stop; chips save at once."],
-    ["Ctrl H", "Back to the reader (from the date picker: close it and keep the value)."],
+    ["Backspace or Ctrl H", "Back to the reader (from the date picker: close it and keep the value)."],
     ["Ctrl L", "Open the date picker from the due field."],
   ]],
   ["Date picker", [
@@ -425,6 +425,7 @@ export default class Memo extends View {
     }
     if (this.helpOpen) { this.helpOpen = false; cx.stop_propagation(); cx.notify(); return; }
     if (k === "?" || (k === "/" && e.modifiers?.shift)) { this.helpOpen = true; cx.stop_propagation(); cx.notify(); return; }
+    if (k === "backspace" && !this.editing && this.zoneKey("h", cx)) { cx.stop_propagation(); return; }
     if (this.pickerFocus) { if (this.pickerKey(k, cx)) cx.stop_propagation(); return; }
     if (this.rightFocus && !this.editing) {
       this.flash = "";
