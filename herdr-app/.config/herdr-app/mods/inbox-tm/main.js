@@ -29,6 +29,7 @@ const LABEL = { fix: "to fix", review: "to review", rerev: "re-review", talk: "c
 const HCRON = async (args) => { const r = await exec("sh", ["-c", '"$HOME/.local/bin/hcron" "$@"', "hcron", ...args], { on: "tm-serve", timeout: 20000 }); if (r.code !== 0) throw new Error("hcron failed"); return JSON.parse(r.stdout); };
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const nextWhen = (ts) => { const d = new Date(ts * 1000), diff = (d - Date.now()) / 1000, p = (n) => String(n).padStart(2, "0"); return diff < 3600 ? `in ${Math.max(1, Math.round(diff / 60))}m` : diff < 86400 ? `in ${Math.floor(diff / 3600)}h` : `${DOW[d.getDay()]} ${p(d.getHours())}:${p(d.getMinutes())}`; };
+const GROUP = { tasks: "mine", appr: "repo", prs: "repo", wait: "repo" }; // a rule is drawn where the group changes
 const PINNED = ["sched", "dev"]; // occasional sections: pinned under a divider at the bottom of the panel
 const WAIT_DAYS = 3; // a waiting item older than this turns the group count amber
 const AUTO_FOLD = ["dev", "sched", "wait"]; // occasional sections: folded on load and again when the panel loses focus
@@ -311,6 +312,9 @@ export default class InboxPanel extends View {
       push("dev", "Dev servers", this.devs.length + bms.length + srv.length, [["running", up], ["stopped", bms.length + srv.filter((x) => !x.up).length]].filter(([, c]) => c),
         [...bms.map((b) => ({ id: "b:" + b.id, key: "dev", kind: "bm", b })), ...this.devs.map((l) => ({ id: "d:" + l.pid + ":" + l.port, key: "dev", kind: "dev", l })), ...srv.map((x) => ({ id: "v:" + x.type + x.id, key: "dev", kind: "srv", x }))]);
     }
+    // Order: mine (Tasks) first, then repo work (Approvals, Pull requests, Waiting), then the pinned occasional sections. Stable sort keeps row order.
+    const rank = { tasks: 0, appr: 1, prs: 2, wait: 3, sched: 4, dev: 5 };
+    out.sort((a, b) => (rank[a.key] ?? 9) - (rank[b.key] ?? 9));
     return out;
   }
 
@@ -519,7 +523,7 @@ export default class InboxPanel extends View {
         .child(div().flex_1().min_w(0).truncate().text_right().text_size(12).text_color(t.dim).child(s ? (total + lateN ? `${total + lateN} need you` : "all clear") : ""))
         .child(iconBtn("inbox-add", "+", (_e, cx) => this.startAdd(cx)))
         .child(iconBtn("inbox-refresh", "↻", () => setShared("inbox-ask", Date.now()))))
-      .child(v_flex().id("inbox-body").flex_1().min_h(0).overflow_y_scrollbar().p(8).gap(1).children(items.filter((it) => !PINNED.includes(it.key)).map(draw))
+      .child(v_flex().id("inbox-body").flex_1().min_h(0).overflow_y_scrollbar().p(8).gap(1).children(items.filter((it) => !PINNED.includes(it.key)).flatMap((it, i, arr) => it.head && i > 0 && GROUP[arr[i - 1].key] !== GROUP[it.key] ? [div().flex_none().px(6).py(5).child(div().h(1).bg(t.border)), draw(it)] : [draw(it)]))
         .when(this.err && !s, (el) => el.child(div().p(8).text_size(12).text_color(t.blocked).child(this.err)))
         .when(!s && !this.err, (el) => el.child(div().p(8).text_size(12).text_color(t.dim).child("Loading…")))
         .when(Boolean(s) && items.length === 0, (el) => el.child(div().p(8).text_size(12).text_color(t.dim).child("Nothing needs you right now.")))
