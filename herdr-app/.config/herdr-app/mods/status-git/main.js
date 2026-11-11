@@ -311,10 +311,6 @@ export default class WorkspaceStatus extends View {
     const t = theme();
     const seen = shared("merged-seen") || 0, fresh = this.merged.filter((m) => m.at > seen);
     const space = spaces().find(s => s.active);
-    const list = agents();
-    const snz = shared("snoozed") || {}, isSnz = (a) => snz[a.address] > Date.now();
-    const needs = list.filter(a => a.status === "blocked" && !isSnz(a)).length;
-    const queued = this.broker?.queue?.length ?? 0;
     this.devUp = (this.broker?.dev ?? []).filter((l) => / running/.test(l));
     this.mongoUp = (this.broker?.mongo ?? []).filter((l) => / running /.test(l));
     const label = (icon, text) => h_flex().gap(6).items_center().child(svg(`mods/workspace-chrome/${icon}.svg`).size(13)).child(text);
@@ -338,10 +334,6 @@ export default class WorkspaceStatus extends View {
         .when(this.serving.length > 4, e => e.child(div().child(`+${this.serving.length - 4}`)))))
       .when(this.devUp.length + this.mongoUp.length > 0, el => el.child(div().id("serve-chip").cursor_pointer().text_color(t.working).on_click(() => run("mod.open", { name: "devservers" }))
         .child(`tm-serve ${[...this.devUp.map((l) => "▲ :" + l.split(" ")[0]), ...(this.mongoUp.length ? [`mongo ${this.mongoUp.length}`] : [])].join(" · ")}`)))
-      .child(h_flex().gap(6).items_center().child(div().size(6).rounded(3).bg(t.dim)).child(`${list.length} agents`)
-        .when(needs + queued > 0, el => el.child(div().id("needs-you").cursor_pointer().text_color(t.blocked).on_click(() => { if (queued) { run("layout.select", { stack: "panel-body", child: "inbox" }); run("layout.show", { id: "panel" }); } else run("mod.open", { name: "changes-float" }); }).child(`· ${needs + queued} needs you${queued ? ` (${queued} to approve)` : ""}`)))
-        .when(list.filter(a => a.status === "done").length > 0, el => el.child(div().text_color(t.done).child(`· ${list.filter(a => a.status === "done").length} done`)))
-        .when(list.filter(a => a.status === "working").length > 0, el => el.child(div().text_color(t.working).child(`· ${list.filter(a => a.status === "working").length} working`))))
       .child(div().flex_1())
       .child(div().id("palette").text_color(t.dim).on_click(() => run("app.palette")).child(`${window()?.platform === "macos" ? "⌘" : "Ctrl"} Shift P  commands`));
   }

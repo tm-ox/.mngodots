@@ -1,6 +1,6 @@
 import { View, div, svg, image } from "gpui-kit";
 import { h_flex } from "gpui-base";
-import { spaces, panes, run, openOverlay, theme, window, shared, setShared, layout, settings } from "herdr";
+import { spaces, panes, agents, run, openOverlay, theme, window, shared, setShared, layout, settings } from "herdr";
 
 const SHOW_READY = false; // approved PRs of mine: hidden while tm does not merge (same switch as inbox-tm)
 
@@ -17,7 +17,11 @@ export default class Tabs extends View {
   init(_props, cx) {
     this.pressed = null;
     this.counts = shared("inbox-counts") || null;
-    cx.timer.every(3000, (cx) => { const c = shared("inbox-counts") || null; if (JSON.stringify(c) !== JSON.stringify(this.counts)) { this.counts = c; cx.notify(); } });
+    this.queued = (shared("broker")?.queue ?? []).length;
+    cx.timer.every(3000, (cx) => {
+      const c = shared("inbox-counts") || null, q = (shared("broker")?.queue ?? []).length;
+      if (JSON.stringify(c) !== JSON.stringify(this.counts) || q !== this.queued) { this.counts = c; this.queued = q; cx.notify(); }
+    });
     this.panels = JSON.parse(localStorage.getItem("panels") ?? "{}");
   }
 
@@ -100,7 +104,15 @@ export default class Tabs extends View {
       .on_click(() => { setShared("git-tab", "inbox"); setShared("git-card", k); run("mod.open", { name: "changes-float" }); })
       .child(div().font_semibold().text_color(color).child(String(n))).child(div().text_color(t.muted).child(label))
       .when(Boolean(tail), el => el.child(div().text_color(color).child(tail)));
+    // Needs you: blocked agents (not snoozed) plus approvals queued in the tm-serve broker. Approvals open the Inbox panel, else the switcher.
+    const snz = shared("snoozed") || {}, blocked = agents().filter((a) => a.status === "blocked" && !(snz[a.address] > Date.now())).length, needs = blocked + this.queued;
+    const needChip = h_flex().id("inbox-needs").h(29).px(10).gap(7).flex_none().items_center().rounded(7).border_1().border_color(t.border).cursor_pointer().text_size(12.8)
+      .hover(s => s.bg(t.hover)).on_mouse_down("left", stop)
+      .on_click(() => { if (this.queued) { run("layout.select", { stack: "panel-body", child: "inbox" }); run("layout.show", { id: "panel" }); } else run("mod.open", { name: "jump-tm" }); })
+      .child(div().font_semibold().text_color(t.blocked).child(String(needs))).child(div().text_color(t.muted).child("needs you"))
+      .when(this.queued > 0, el => el.child(div().text_color(t.blocked).child(`${this.queued} to approve`)));
     const chips = [
+      needs > 0 && needChip,
       ic.review > 0 && chip("review", ic.review, "to review", t.blocked, age > 3 * day ? `${Math.floor(age / day)}d` : ""),
       ic.rerev > 0 && chip("rerev", ic.rerev, "re-review", t.blocked),
       ic.talk > 0 && chip("talk", ic.talk, "new comments", t.working),
