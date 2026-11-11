@@ -25,12 +25,13 @@ const saveFolded = (s) => { try { localStorage.setItem(LS, JSON.stringify([...s]
 
 const DAY = 864e5;
 const SHOW_READY = false; // approved PRs of mine: off while tm does not merge; turn on for repos where tm merges
-const LABEL = { fix: "to fix", review: "to review", rerev: "re-review", talk: "comments", ready: "ready", overdue: "overdue", today: "today", running: "running", stopped: "stopped", on: "on", pending: "pending" };
+const LABEL = { fix: "to fix", review: "to review", rerev: "re-review", talk: "comments", wait: "waiting", ready: "ready", overdue: "overdue", today: "today", running: "running", stopped: "stopped", on: "on", pending: "pending" };
 const HCRON = async (args) => { const r = await exec("sh", ["-c", '"$HOME/.local/bin/hcron" "$@"', "hcron", ...args], { on: "tm-serve", timeout: 20000 }); if (r.code !== 0) throw new Error("hcron failed"); return JSON.parse(r.stdout); };
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const nextWhen = (ts) => { const d = new Date(ts * 1000), diff = (d - Date.now()) / 1000, p = (n) => String(n).padStart(2, "0"); return diff < 3600 ? `in ${Math.max(1, Math.round(diff / 60))}m` : diff < 86400 ? `in ${Math.floor(diff / 3600)}h` : `${DOW[d.getDay()]} ${p(d.getHours())}:${p(d.getMinutes())}`; };
 const PINNED = ["sched", "dev"]; // occasional sections: pinned under a divider at the bottom of the panel
-const AUTO_FOLD = ["dev", "sched"]; // occasional sections: folded on load and again when the panel loses focus
+const WAIT_DAYS = 3; // a waiting item older than this turns the group count amber
+const AUTO_FOLD = ["dev", "sched", "wait"]; // occasional sections: folded on load and again when the panel loses focus
 const MARK = "devservers:";
 const BM_KEY = "devservers.bookmarks";
 // Command without the project's own path and node_modules/.bin, so "astro dev" reads as "astro dev".
@@ -91,7 +92,10 @@ function sections(inb) {
   const talk = pick([...waiting, ...mine], (d) => d.act > seenAt(d));
   const ready = !SHOW_READY ? [] : pick(mine, (d) => d.ci !== "wait" && (d.appr.length > 0 || d.decision === "APPROVED"));
   const covered = review.filter((d) => d.covered && !take.has(d.url)).length;
-  return { fix, toReview, rerev, talk, ready, covered };
+  // Nothing for tm to do: own PRs with nothing to fix, PRs tm reviewed with no new commits, threads where tm spoke last
+  // (act is 0 then). Approved own PRs that are ready to merge stay out: that is tm's move, not a wait.
+  const wait = [...pick(waiting, () => true), ...pick(mine, (d) => !(d.decision === "APPROVED" || (d.appr.length > 0 && d.ci !== "wait" && d.ci !== "fail")))].sort((a, b) => Date.parse(a.updatedAt) - Date.parse(b.updatedAt));
+  return { fix, toReview, rerev, talk, ready, wait, covered };
 }
 
 // dev-server and throwaway-mongo on tm-serve, from status-git's shared("broker") probe (plain status lines). Ids are
@@ -296,6 +300,10 @@ export default class InboxPanel extends View {
       push("tasks", "Tasks", this.tasks.length, [["overdue", late], ["today", tod]].filter(([, c]) => c), [...(this.adding ? [{ id: "a:add", key: "tasks", kind: "add" }] : []), ...this.tasks.slice(0, MAX_TASKS).map((k) => ({ id: "t:" + k.id, key: "tasks", kind: "task", k }))], this.adding);
       if (this.tasks.length > MAX_TASKS && !this.folded.has("tasks")) out.push({ id: "m:tasks", key: "tasks", kind: "more", text: `+${this.tasks.length - MAX_TASKS} more in Memo` });
     }
+    if (inb) {
+      const w = sections(inb).wait;
+      push("wait", "Waiting on others", w.length, [["wait", w.length]], w.map((d) => ({ id: "w:" + d.url, key: "wait", kind: "pr", cat: "wait", d })));
+    }
     if (this.jobs?.length) push("sched", "Schedules", this.jobs.length, [["on", this.jobs.filter((j) => j.enabled).length]].filter(([, c]) => c), this.jobs.map((j) => ({ id: "j:" + j.name, key: "sched", kind: "job", j })));
     if (this.devs) {
       const bms = (Array.isArray(shared(BM_KEY)) ? shared(BM_KEY) : []).filter((b) => !this.devs.some((l) => l.bm === b.id));
@@ -392,9 +400,9 @@ export default class InboxPanel extends View {
     const lateN = (this.tasks ?? []).filter((k) => k.due && k.due.slice(0, 10) <= ymd(new Date())).length;
     const iconBtn = (id, text, onClick) => div().id(id).w(24).h(24).flex().items_center().justify_center().flex_none().rounded(6).cursor_pointer().text_size(13).text_color(t.muted).hover((x) => x.bg(t.hover)).on_click(onClick).child(text);
     const chip = (text, color) => div().flex_none().h(16).px(6).flex().items_center().rounded(5).border_1().border_color(t.border).text_size(11).text_color(color).child(text);
-    const colorOf = { fix: t.blocked, review: t.blocked, rerev: t.blocked, talk: t.working, ready: t.done, overdue: t.blocked, today: t.working, running: t.done, stopped: t.dim, on: t.done, pending: t.blocked };
+    const colorOf = { fix: t.blocked, review: t.blocked, rerev: t.blocked, talk: t.working, ready: t.done, overdue: t.blocked, today: t.working, running: t.done, stopped: t.dim, on: t.done, pending: t.blocked, wait: s && s.wait.some((d) => Date.now() - Date.parse(d.updatedAt) > WAIT_DAYS * DAY) ? t.working : t.dim };
     const ciTail = (d) => (d.ci === "fail" ? "CI failing" : d.decision === "CHANGES_REQUESTED" ? "changes asked" : "");
-    const tailOf = { fix: ciTail, review: (d) => (Date.now() - Date.parse(d.createdAt) > 3 * DAY ? "waiting" : ""), rerev: (d) => d.flag };
+    const tailOf = { fix: ciTail, review: (d) => (Date.now() - Date.parse(d.createdAt) > 3 * DAY ? "waiting" : ""), rerev: (d) => d.flag, wait: (d) => (Date.now() - Date.parse(d.updatedAt) > WAIT_DAYS * DAY ? "stale" : "") };
     const row = (it) => {
       const d = it.d, short = d.repo.split("/")[1] ?? d.repo, fresh = d.act > seenAt(d), on = focused && this.sel === it.id, tail = tailOf[it.cat]?.(d);
       return v_flex().id(it.id).flex_none().px(10).py(5).gap(2).rounded(7).cursor_pointer().bg(on ? t.selected : t.background).hover((x) => x.bg(on ? t.selected : t.hover))
@@ -405,7 +413,7 @@ export default class InboxPanel extends View {
           .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(t.dim).child(d.author)))
         .child(h_flex().gap(5).items_center().min_w(0)
           .when(it.cat === "review" && !d.my && this.drafts.has(`${short}#${d.n}`), (el) => el.child(chip("drafted", t.accent)))
-          .child(chip(LABEL[it.cat], colorOf[it.cat]))
+          .child(chip(LABEL[it.cat], it.cat === "wait" ? t.dim : colorOf[it.cat]))
           .when(fresh && it.cat !== "talk", (el) => el.child(chip("new", t.working)))
           .when(Boolean(tail), (el) => el.child(chip(tail, t.dim)))
           .child(chip(age(d.createdAt), t.dim)));
