@@ -168,7 +168,7 @@ export default class Changes extends View {
     const go = shared("git-open"); // side-panel Inbox row: open that PR once the window is up
     if (go?.url) { setShared("git-open", null); cx.timer.after(80, (cx) => this.openInbox({ n: go.n, url: go.url, title: go.title, repo: go.repo }, cx)); }
     this.tab = want === "merged" ? "open" : want || "inbox";
-    if (want === "merged") cx.timer.after(50, () => setShared("merged-seen", Date.now())); this.info = shared("git-info") || {}; this.remote = shared("git-remote") || {}; this.remoteAt = 0; this.infoAt = 0; this.dsel = -1; this.acts = []; this.order = []; this.repos = null; this.cwdKey = null; this.prLoading = false; this.prAt = 0; this.sel = 0;
+    if (want === "merged") cx.timer.after(50, () => setShared("merged-seen", Date.now())); this.info = shared("git-info") || {}; this.infoAt = 0; this.dsel = -1; this.acts = []; this.order = []; this.repos = null; this.cwdKey = null; this.prLoading = false; this.prAt = 0; this.sel = 0;
     this.files = []; this.rows = []; this.diffWidth = 0; this.message = ""; this.handle = cx.focus_handle();
     this.input = InputState.new({ placeholder: "Commit message" });
     this.input.on("change", (_e, cx) => {
@@ -755,55 +755,12 @@ export default class Changes extends View {
       .when(Boolean(bar), (e) => e.child(bar));
   }
 
-  // Per repo, slower (`gh`, at most once a minute): default-branch CI, merged local branches, open issues and
-  // the ones assigned to you.
-  loadRemote(cx) {
-    if (!this.repos?.length || this.remoteLoading || Date.now() - this.remoteAt < 60000) return;
-    this.remoteLoading = true; this.remoteAt = Date.now();
-    const script = [
-      'cd "$1" 2>/dev/null || exit 1',
-      'def=$(git symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed "s@^origin/@@"); [ -n "$def" ] || def=main',
-      'echo "def $def"',
-      'echo "merged $(git branch --merged "$def" --format="%(refname:short)" 2>/dev/null | grep -v -x -e "$def" -e "$(git rev-parse --abbrev-ref HEAD 2>/dev/null)" | wc -l)"',
-      'gh run list --branch "$def" --limit 1 --json status,conclusion --jq ".[]|\"ci \\(.status)|\\(.conclusion)\"" 2>/dev/null',
-      'gh issue list --state open --limit 100 --json number --jq "\"issues \\(length)\"" 2>/dev/null',
-      'gh issue list --state open --limit 6 --json number,title,url,createdAt --jq ".[]|\"i \\(.number)|\\(.createdAt)|\\(.url)|\\(.title)\"" 2>/dev/null',
-      'gh issue list --assignee @me --state open --limit 100 --json number --jq "\"a \\(length)\"" 2>/dev/null',
-      "true",
-    ].join("; ");
-    const repos = this.repos;
-    cx.spawn(async (cx) => {
-      const next = {};
-      await Promise.all(repos.map(async (r) => {
-        try {
-          const o = await hc(["exec", "sh", "-c", script, "sh", r.top]);
-          if (o.code !== 0) return;
-          const v = { mine: [] };
-          for (const line of o.stdout.split("\n")) {
-            const sp = line.indexOf(" "), k = line.slice(0, sp), val = line.slice(sp + 1);
-            if (k === "def") v.def = val;
-            else if (k === "merged") v.merged = Number(val) || 0;
-            else if (k === "ci") { const [status, conclusion] = val.split("|"); v.ci = { status, conclusion }; }
-            else if (k === "issues") v.issues = Number(val) || 0;
-            else if (k === "a") v.assigned = Number(val) || 0;
-            else if (k === "i") { const [n, at, url, ...title] = val.split("|"); v.mine.push({ n: Number(n), at, url, title: title.join("|") }); }
-          }
-          next[r.top] = v;
-        } catch {}
-      }));
-      this.remote = { ...this.remote, ...next }; this.remoteLoading = false;
-      if (JSON.stringify(this.remote) !== JSON.stringify(shared("git-remote"))) setShared("git-remote", this.remote);
-      cx.notify();
-    });
-  }
-
   // Per repo for the dashboard: branch, ahead/behind, last commit, change size, stashes, recent commits and
   // commits per day (one `sh` per repo, read only).
   loadInfo(cx, force) {
     this.loadIssues(cx); // also covers the cached-PR path, which never reaches the end of loadPrs
     if (!this.repos?.length || this.infoLoading || (!force && Date.now() - this.infoAt < 12000)) return;
     this.infoLoading = true; this.infoAt = Date.now();
-    this.loadRemote(cx);
     const script = [
       'cd "$1" 2>/dev/null || exit 1',
       'echo "branch $(git rev-parse --abbrev-ref HEAD 2>/dev/null)"',
@@ -866,13 +823,12 @@ export default class Changes extends View {
       .child(div().w(130).flex_none().truncate().text_right().text_size(11).text_color(t.dim).child(d.author?.login ?? ""))
       .child(div().w(74).flex_none().text_right().text_size(11).text_color(t.dim).child(tail)); };
     const cards = (this.repos ?? []).map((r) => {
-      const i = this.info[r.top], rm = this.remote[r.top], open = r.open, need = open.filter((d) => d.needsMe), fail = open.filter((d) => d.checks === "fail");
+      const i = this.info[r.top], open = r.open, need = open.filter((d) => d.needsMe), fail = open.filter((d) => d.checks === "fail");
       const ok = open.filter((d) => d.reviewDecision === "APPROVED"), wait = open.filter((d) => d.checks === "wait");
       const onMain = Boolean(i) && /^(main|master)$/.test(i.branch) && i.changed > 0;
       const run = serving.filter((v) => v.cwd === r.top || v.cwd.startsWith(r.top + "/"));
       const oldest = open.length ? Math.max(...open.map((d) => Date.now() - Date.parse(d.createdAt))) : 0;
-      const ciState = rm?.ci ? (rm.ci.status !== "COMPLETED" ? "wait" : rm.ci.conclusion === "SUCCESS" ? "pass" : ["FAILURE", "TIMED_OUT", "STARTUP_FAILURE"].includes(rm.ci.conclusion) ? "fail" : "none") : "none";
-      const health = need.length || fail.length || ciState === "fail" ? t.blocked : wait.length || i?.changed ? t.working : t.done;
+      const health = need.length || fail.length ? t.blocked : wait.length || i?.changed ? t.working : t.done;
       const bars = [];
       for (let k = 29; k >= 0; k--) bars.push(i?.days?.[ymd(Date.now() - k * day)] ?? 0);
       const peak = Math.max(1, ...bars), total = bars.reduce((a, b) => a + b, 0);
@@ -896,8 +852,6 @@ export default class Changes extends View {
             .when(Boolean(i) && !onMain, (e) => e.child(chip("branch " + i.branch)))
             .when(onMain, (e) => e.child(div().px(7).py(2).rounded(5).border_1().border_color(t.border).text_size(11).text_color(t.blocked).child(`branch ${i.branch} · uncommitted changes, branch first`)))
             .when(Boolean(i) && (i.ahead > 0 || i.behind > 0), (e) => e.child(chip([i.ahead > 0 ? `${i.ahead} unpushed` : "", i.behind > 0 ? `${i.behind} behind remote` : ""].filter(Boolean).join(" · "), t.working)))
-            .when(ciState !== "none", (e) => e.child(chip(`${rm.def} CI ` + ({ pass: "passing", fail: "failing", wait: "running" })[ciState], ({ pass: t.done, fail: t.blocked, wait: t.working })[ciState])))
-            .when(Boolean(rm?.merged), (e) => e.child(chip(`${rm.merged} merged local branch${rm.merged === 1 ? "" : "es"}, safe to delete`)))
             .when(Boolean(i?.stash), (e) => e.child(chip(`${i.stash} stash${i.stash === 1 ? "" : "es"}`)))
             .when(run.length > 0, (e) => e.child(chip("dev server " + run.map((v) => `:${v.port}`).join(" "), t.working)))
             .child(div().flex_1())
