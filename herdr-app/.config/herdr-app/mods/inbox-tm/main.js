@@ -19,6 +19,17 @@ const dictate = (e, cx, box, single = true) => {
   exec("wl-paste", ["-n"]).then((r) => { if (r.code === 0 && r.stdout) { box.replace(single ? String(r.stdout).replace(/\r?\n/g, " ") : String(r.stdout)); box.focus(); } });
   cx.stop_propagation(); return true;
 };
+// Approval detail (shown in place of the list). Everything an agent wrote is data: control and bidi characters are stripped and it is
+// only ever drawn as plain text in an "untrusted" box, never interpreted or put on a command line.
+const ID_RE = /^\d{8}-\d{6}-[0-9a-f]{6}$/, HASH_RE = /^[0-9a-f]{64}$/;
+const clean = (s, max = 6000) => String(s ?? "").replace(/\r/g, "").replace(/\t/g, "  ").replace(/[\u0000-\u0009\u000b-\u001f\u007f-\u009f​-‏‪-‮⁦-⁩﻿]/g, "").slice(0, max);
+const keyChip = (text, t) => div().px(6).h(18).min_w(18).flex().items_center().justify_center().flex_none().rounded(5).border_1().border_color(t.input ?? t.border).bg(t.raised).text_size(11).font_medium().text_color(t.muted).child(text);
+const keyHints = (text, t) => h_flex().gap(14).items_center().min_w(0).overflow_hidden().children(text.split(" · ").map((seg) => {
+  const w = seg.split(" "); let n = 1;
+  while (n < w.length && /^[A-Z]$/.test(w[n])) n++;
+  const label = w.slice(n).join(" ");
+  return h_flex().gap(6).items_center().flex_none().child(keyChip(w.slice(0, n).join(" "), t)).when(Boolean(label), (e) => e.child(div().text_size(12).text_color(t.dim).child(label)));
+}));
 const LS = "inbox-folded";
 const loadFolded = () => { try { return new Set(JSON.parse(localStorage.getItem(LS) ?? "[]")); } catch { return new Set(); } };
 const saveFolded = (s) => { try { localStorage.setItem(LS, JSON.stringify([...s])); } catch {} };
@@ -120,6 +131,7 @@ export default class InboxPanel extends View {
     this.devs = null; this.armed = null; this.scanDevs(cx); cx.timer.every(8000, (cx) => this.scanDevs(cx));
     this.folded = loadFolded(); AUTO_FOLD.forEach((k) => this.folded.add(k)); this.devOpenAt = 0;
     this.jobs = null; this.loadJobs(cx); cx.timer.every(60000, (cx) => this.loadJobs(cx));
+    this.det = null; this.marks = new Map(); this.confirm = false; this.running = false; this.results = null; this.pauseUntil = 0;
      /* dev servers start collapsed */ this.sel = null; this.handle = cx.focus_handle();
     cx.spawn(async (cx) => { for (;;) { const c = await nextCommand(); if (c === "focus") { this.handle.focus(); cx.timer.after(150, (cx) => { this.handle.focus(); cx.notify(); }); /* a panel that was just shown may not be in the focus tree yet: take it again */ if (!this.sel) this.sel = this.items()[0]?.id ?? null; cx.notify(); } } });
     if (!this.inb || Date.now() - this.inb.at > 45000) setShared("inbox-ask", Date.now());
@@ -132,6 +144,7 @@ export default class InboxPanel extends View {
       const ask = shared("inbox-open-dev") || 0; // the status-bar servers chip: unfold Dev servers
       if (ask > (this.devAsk ?? Date.now())) { this.folded.delete("dev"); this.devOpenAt = Date.now(); saveFolded(this.folded); }
       this.devAsk = Math.max(ask, this.devAsk ?? 0);
+      if (this.det && !this.det.busy && !this.running && Date.now() - this.det.at > 15000) this.loadDetail(cx);
       cx.notify(); // also keeps the relative ages and "new" marks current
     });
   }
@@ -341,7 +354,8 @@ export default class InboxPanel extends View {
   }
 
   key(e, cx) {
-    const k = e.key, items = this.items();
+    const k = e.key, items = this.det ? [] : this.items();
+    if (this.det) return this.detKey(e, cx);
     if (this.adding && dictate(e, cx, this.addState)) return;
     if (this.adding) { if (k === "escape") this.endAdd(cx); else if (k === "tab") this.cycleCal(cx); else return; cx.stop_propagation(); return; }
     if (e.modifiers?.alt && ["h", "j", "k", "l"].includes(k)) { leavePanel({ h: "left", j: "down", k: "up", l: "right" }[k]); cx.timer.after(150, (cx) => cx.notify()); cx.stop_propagation(); return; }
@@ -372,11 +386,104 @@ export default class InboxPanel extends View {
     cx.stop_propagation(); cx.notify();
   }
 
+  // Approval detail: `gh-broker show --json` on tm-serve (read only, no tty). The view replaces the list until Esc.
+  openDetail(id) {
+    this.det = { list: [], idx: 0, loading: true, err: "", at: 0, busy: false, want: id };
+    this.marks.clear(); this.confirm = false; this.results = null;
+    this.loadDetail(this.cxRef); this.cxRef.notify();
+  }
+
+  loadDetail(cx) {
+    const d = this.det; if (!d) return;
+    d.busy = true;
+    cx.spawn(async (cx) => {
+      try {
+        const r = await exec("sh", ["-c", '"$HOME/.local/bin/gh-broker" show --json'], { on: REV_HOST, timeout: 60000 });
+        if (r.code !== 0) throw new Error((r.stderr || r.stdout || "show failed").trim().split("\n")[0]);
+        const list = JSON.parse(r.stdout);
+        if (!Array.isArray(list)) throw new Error("unexpected answer from tm-serve");
+        this.applyDetail(list);
+      } catch (e) { if (this.det) this.det.err = clean(e.message ?? e, 200); }
+      if (this.det) { this.det.loading = false; this.det.busy = false; this.det.at = Date.now(); }
+      this.cxRef.notify();
+    });
+  }
+
+  // Keeps the same request selected; drops marks whose request changed or vanished, and pauses marking for 1 s after any change.
+  applyDetail(list) {
+    const d = this.det; if (!d) return;
+    const sane = list.filter((q) => q && ID_RE.test(String(q.id)) && HASH_RE.test(String(q.hash)));
+    const before = d.list.map((q) => q.hash).join(), curId = d.want ?? d.list[d.idx]?.id;
+    let changed = d.list.length > 0 && before !== sane.map((q) => q.hash).join();
+    for (const [id, m] of this.marks) { const q = sane.find((x) => x.id === id); if (!q || q.hash !== m.hash) { this.marks.delete(id); changed = true; } }
+    if (changed) { this.confirm = false; this.pauseUntil = Date.now() + 1000; }
+    d.list = sane; d.err = ""; d.want = null;
+    const i = sane.findIndex((x) => x.id === curId);
+    d.idx = i >= 0 ? i : Math.min(d.idx, Math.max(0, sane.length - 1));
+  }
+
+  closeDetail() { this.det = null; this.marks.clear(); this.confirm = false; this.results = null; this.handle.focus(); }
+
+  detKey(e, cx) {
+    const k = e.key, d = this.det, n = d.list.length;
+    if (e.modifiers?.alt && ["h", "j", "k", "l"].includes(k)) { leavePanel({ h: "left", j: "down", k: "up", l: "right" }[k]); cx.timer.after(150, (cx) => cx.notify()); cx.stop_propagation(); return; }
+    if (k === "escape" || k === "backspace") { if (this.confirm) this.confirm = false; else this.closeDetail(); }
+    else if (k === "down" || k === "j") { if (n) d.idx = (d.idx + 1) % n; this.confirm = false; }
+    else if (k === "up" || k === "k") { if (n) d.idx = (d.idx - 1 + n) % n; this.confirm = false; }
+    else if (k === "r") { if (!d.busy) this.loadDetail(cx); }
+    else if (k === "b") { this.openGbOk(); }
+    else return;
+    cx.stop_propagation(); cx.notify();
+  }
+
+  renderDet(t, focused) {
+    const d = this.det, n = d.list.length, q = d.list[d.idx];
+    const box = (cap, kids, color) => v_flex().flex_none().rounded(7).border_1().border_color(color ?? t.border).p(8).gap(3)
+      .child(div().text_size(10).font_medium().text_color(color ?? t.accent).child(cap.toUpperCase())).children(kids);
+    const kv = (key, v) => h_flex().gap(8).items_start().child(div().flex_none().w(52).text_size(11).text_color(t.dim).child(key)).child(div().flex_1().min_w(0).text_size(12).text_color(t.foreground).child(clean(v, 300)));
+    const lines = (s, size = 12, color = t.muted) => clean(s).split("\n").map((l) => (l.trim() ? div().min_w(0).text_size(size).text_color(color).child(l) : div().h(6)));
+    const kids = [];
+    if (d.err) kids.push(div().text_size(12).text_color(t.blocked).child(d.err));
+    if (!q) kids.push(div().p(8).text_size(12).text_color(d.loading ? t.dim : t.muted).child(d.loading ? "Loading…" : "No approvals waiting."));
+    else {
+      const mark = this.marks.get(q.id), where = (q.repo ?? "").split("/").pop() + (q.pr ? ` #${q.pr}` : q.branch ? ` ${q.branch}` : "");
+      kids.push(h_flex().gap(6).items_center().min_w(0)
+        .child(div().flex_none().h(16).px(6).flex().items_center().rounded(5).border_1().border_color(t.border).text_size(11).text_color(t.blocked).child(clean(q.kind, 20) + (q.mode ? " " + clean(q.mode, 20).replace(/^--/, "") : "")))
+        .child(div().flex_1().min_w(0).truncate().text_size(12).text_color(t.accent).child(clean(where, 120)))
+        .when(Boolean(mark), (el) => el.child(div().flex_none().h(16).px(6).flex().items_center().rounded(5).border_1().border_color(t.border).text_size(11).text_color(mark?.act === "a" ? t.done : t.blocked).child(mark?.act === "a" ? "approve" : "reject"))));
+      const facts = [kv("repo", q.repo), q.branch ? kv("branch", q.branch) : null, q.pr ? kv("PR", `#${q.pr}`) : null, q.head ? kv("head", String(q.head).slice(0, 10)) : null,
+        q.base ? kv("base", q.base + (q.behind ? `  (${q.behind} behind)` : "")) : null, kv("id", q.id), kv("hash", String(q.hash).slice(0, 16))].filter(Boolean);
+      kids.push(box("Request", facts));
+      if (q.problems?.length) kids.push(box("Failed validation (cannot be approved)", q.problems.map((w) => div().text_size(12).text_color(t.blocked).child(clean(w, 200))), t.blocked));
+      if (q.warnings?.length) kids.push(box("Warnings", q.warnings.map((w) => div().min_w(0).text_size(12).text_color(t.working).child(clean(w, 300))), t.working));
+      if (q.head_moved) kids.push(box("Head moved", [div().text_size(12).text_color(t.blocked).child("the PR head is no longer the one this draft was written at")], t.blocked));
+      if (q.commits?.length) kids.push(box(`Commits (${q.commits.length})`, q.commits.flatMap((c) => [
+        h_flex().gap(8).items_start().child(div().flex_none().text_size(11).text_color(t.accent).child(clean(c.hash, 12))).child(div().flex_1().min_w(0).text_size(12).text_color(t.foreground).child(clean(c.subject, 300))),
+        div().pl(0).min_w(0).truncate().text_size(11).text_color(t.dim).child(`by ${clean(c.author, 80)} <${clean(c.email, 120)}>`)])));
+      if (q.files?.length) {
+        const ta = q.files.reduce((a, f) => a + (Number(f.add) || 0), 0), td = q.files.reduce((a, f) => a + (Number(f.del) || 0), 0);
+        kids.push(box(`Files (${q.files.length})  +${ta} -${td}`, q.files.map((f) => h_flex().gap(8).items_center().min_w(0)
+          .child(div().flex_none().w(34).text_size(11).text_color(t.done).child("+" + clean(f.add, 8))).child(div().flex_none().w(34).text_size(11).text_color(t.blocked).child("-" + clean(f.del, 8)))
+          .child(div().flex_1().min_w(0).truncate().text_size(12).text_color(t.muted).child(clean(f.path, 200))))));
+      }
+      if (q.title || q.body) kids.push(box("From agent, untrusted (plain text)", [...(q.title ? [div().min_w(0).text_size(13).font_semibold().text_color(t.foreground).child(clean(q.title, 300)), div().h(4)] : []), ...lines(q.body)], t.border));
+    }
+    const hint = keyHints(this.hintText(), t);
+    return v_flex().id("inbox-panel").track_focus(this.handle).on_key_down((e, cx) => this.key(e, cx)).size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(focused ? t.accent : t.border).text_color(t.foreground).text_size(13)
+      .child(h_flex().h(30).flex_none().px(12).gap(8).items_center().border_b(1).border_color(t.border)
+        .child(div().flex_none().text_size(12).font_medium().text_color(t.accent).child(n ? `Approval ${d.idx + 1}/${n}` : "Approvals"))
+        .child(div().flex_1()).child(div().flex_none().text_size(11).text_color(t.dim).child(d.busy ? "reading…" : "")))
+      .child(v_flex().id("inbox-det-body").flex_1().min_h(0).overflow_y_scrollbar().p(8).gap(6).children(kids))
+      .child(div().flex_none().min_h(30).px(10).py(4).flex().items_center().border_t(1).border_color(t.border).child(hint));
+  }
+
+  hintText() { return "j/k next · r refresh · b gb-ok · Esc back"; }
+
   after150(cmd) { this.cxRef?.timer.after(150, () => run(cmd)); }
 
   activate(it) {
     if (it.kind === "pr") this.open(it.d);
-    else if (it.kind === "appr") this.openGbOk();
+    else if (it.kind === "appr") this.openDetail(it.q.id);
     else if (it.kind === "health") setShared("broker-ask", Date.now());
     else if (it.kind === "srv") this.tunnel(it.x);
     else if (it.kind === "dev") exec("xdg-open", [`http://localhost:${it.l.port}`]).catch(() => {});
@@ -399,6 +506,7 @@ export default class InboxPanel extends View {
 
   render(cx) {
     const t = theme(), inb = this.inb, s = inb ? sections(inb) : null, focused = this.handle.is_focused();
+    if (this.det) return this.renderDet(t, focused);
     const total = s ? s.fix.length + s.toReview.length + s.rerev.length + s.talk.length + s.ready.length : 0;
     const lateN = (this.tasks ?? []).filter((k) => k.due && k.due.slice(0, 10) <= ymd(new Date())).length;
     const iconBtn = (id, text, onClick) => div().id(id).w(24).h(24).flex().items_center().justify_center().flex_none().rounded(6).cursor_pointer().text_size(13).text_color(t.muted).hover((x) => x.bg(t.hover)).on_click(onClick).child(text);
@@ -529,6 +637,6 @@ export default class InboxPanel extends View {
         .when(Boolean(s) && s.covered > 0, (el) => el.child(div().px(10).pt(10).text_size(11).text_color(t.dim).child(`${s.covered} more already approved by others`)))
         .when(Boolean(this.err && s), (el) => el.child(div().px(10).pt(8).text_size(11).text_color(t.blocked).child(this.err))))
       .when(items.some((it) => PINNED.includes(it.key)) || Boolean(bkNow), (el) => el.child(v_flex().id("inbox-pinned").flex_none().h(pinH).when(pinCapped, (e) => e.overflow_y_scrollbar()).when(!pinCapped, (e) => e.overflow_hidden()).px(8).pb(6).pt(2).gap(1).border_t(1).border_color(t.border).children([...items.filter((it) => PINNED.includes(it.key)).map(draw), ...(bkNow ? [hrow({ id: "k:health", bk: bkNow })] : [])])))
-      .child(div().flex_none().h(26).px(14).flex().items_center().border_t(1).border_color(focused ? t.border : t.background).truncate().text_size(11).text_color(t.dim).child(focused ? "j k move (wraps) · g G first / last · ← → fold · a fold all · Enter open (approval: gb-ok · schedule: manage) · n new task · x tick · d delete task · s stop · t tunnel (tm-serve) · e servers · r restart / start (server) or refresh · Esc leave" : ""));
+      .child(div().flex_none().h(26).px(14).flex().items_center().border_t(1).border_color(focused ? t.border : t.background).truncate().text_size(11).text_color(t.dim).child(focused ? "j k move (wraps) · g G first / last · ← → fold · a fold all · Enter open (approval: detail · schedule: manage) · n new task · x tick · d delete task · s stop · t tunnel (tm-serve) · e servers · r restart / start (server) or refresh · Esc leave" : ""));
   }
 }
