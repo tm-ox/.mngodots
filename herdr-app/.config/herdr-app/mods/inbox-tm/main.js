@@ -530,6 +530,6 @@ export default class InboxPanel extends View {
         .when(Boolean(s) && s.covered > 0, (el) => el.child(div().px(10).pt(10).text_size(11).text_color(t.dim).child(`${s.covered} more already approved by others`)))
         .when(Boolean(this.err && s), (el) => el.child(div().px(10).pt(8).text_size(11).text_color(t.blocked).child(this.err))))
       .when(items.some((it) => PINNED.includes(it.key)), (el) => el.child(v_flex().id("inbox-pinned").flex_none().h(pinH).when(pinCapped, (e) => e.overflow_y_scrollbar()).when(!pinCapped, (e) => e.overflow_hidden()).px(8).pb(6).pt(2).gap(1).border_t(1).border_color(t.border).children(items.filter((it) => PINNED.includes(it.key)).map(draw))))
-      .when(focused, (el) => el.child(div().flex_none().px(14).py(6).border_t(1).border_color(t.border).truncate().text_size(11).text_color(t.dim).child("j k move (wraps) · g G first / last · ← → fold · a fold all · Enter open (approval: gb-ok · schedule: manage) · n new task · x tick · d delete task · s stop · t tunnel (tm-serve) · e servers · r restart / start (server) or refresh · Esc leave")));
+      .child(div().flex_none().h(26).px(14).flex().items_center().border_t(1).border_color(focused ? t.border : t.background).truncate().text_size(11).text_color(t.dim).child(focused ? "j k move (wraps) · g G first / last · ← → fold · a fold all · Enter open (approval: gb-ok · schedule: manage) · n new task · x tick · d delete task · s stop · t tunnel (tm-serve) · e servers · r restart / start (server) or refresh · Esc leave" : ""));
   }
 }
