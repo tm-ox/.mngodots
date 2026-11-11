@@ -15,8 +15,8 @@ function parseBroker(out) {
   let syncAt = 0, mode = "", mt = 0;
   for (const line of out.split("\n")) {
     if (mode === "q") { mode = ""; try { const q = JSON.parse(line); queue.push({ id: q.id, kind: q.kind, repo: q.repo, branch: q.branch, pr: q.pr, mode: q.mode, title: q.title, profile: q.profile, at: mt * 1000 }); } catch {} continue; }
-    if (line.startsWith("Q ")) { mt = Number(line.slice(2)) || 0; mode = "q"; }
-    else if (line.startsWith("S ")) syncAt = (Number(line.slice(2)) || 0) * 1000;
+    if (line.startsWith("Q ") && mode !== "d" && mode !== "m") { mt = Number(line.slice(2)) || 0; mode = "q"; }
+    else if (line.startsWith("S ") && mode !== "d" && mode !== "m") syncAt = (Number(line.slice(2)) || 0) * 1000;
     else if (line === "D" || line === "M") mode = line.toLowerCase();
     else if (line.trim() && mode === "d") dev.push(line.trim());
     else if (line.trim() && mode === "m") mongo.push(line.trim());
@@ -132,7 +132,7 @@ export default class WorkspaceStatus extends View {
     this.brokerBusy = true; this.brokerAt = Date.now();
     cx.spawn(async (cx) => {
       try {
-        const r = await exec("sh", ["-c", BROKER_SCRIPT], { on: "tm-serve" });
+        const r = await exec("sh", ["-c", BROKER_SCRIPT], { on: "tm-serve", timeout: 15000 });
         if (r.code !== 0) throw new Error("tm-serve probe failed");
         const b = { at: Date.now(), ok: true, ...parseBroker(r.stdout) };
         if (JSON.stringify({ ...b, at: 0 }) !== JSON.stringify({ ...(this.broker ?? {}), at: 0 })) cx.notify();
@@ -140,8 +140,7 @@ export default class WorkspaceStatus extends View {
       } catch (e) {
         const b = { ...(this.broker ?? { queue: [], dev: [], mongo: [], syncAt: 0 }), at: Date.now(), ok: false, err: String(e.message ?? e) };
         this.broker = b; setShared("broker", b); cx.notify();
-      }
-      this.brokerBusy = false;
+      } finally { this.brokerBusy = false; }
     });
   }
 
