@@ -22,7 +22,7 @@ export default class ParkedStrip extends View {
       .text_color(t.muted)
       .cursor_pointer()
       .hover((s) => s.opacity(0.85))
-      .on_click(() => openOverlay({ mod: "parked", kind: "dialog", width: 560, height: 320 }))
+      .on_click(() => openOverlay({ mod: "jump-tm", kind: "dialog", width: 780, height: 680, props: { filter: "parked" } }))
       .child(div().flex_none().text_color(t.accent).child("⏸ " + parked.length + " parked"))
       .child(div().flex_1().min_w(0).truncate().text_color(t.dim).child(names));
   }

@@ -107,7 +107,7 @@ export default class PaneParking extends View {
             openOverlay({ mod: "name-terminal", kind: "dialog", width: 420, props: { terminal, value } });
           }
         } else if (c === "list") {
-          openOverlay({ mod: "parked", kind: "dialog", width: 560, height: 320 });
+          openOverlay({ mod: "jump-tm", kind: "dialog", width: 780, height: 680, props: { filter: "parked" } }); // the parked mod stays installed, unbound
         }
         cx.notify();
       }

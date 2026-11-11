@@ -3,7 +3,7 @@
 // blocked prompt), Ctrl+Z snoozes 30 min (shared "snoozed", used by pane-parking and the status bar), Esc closes.
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input } from "gpui-base";
-import { hc, agents, run, props, closeOverlay, theme, shared, setShared, notify, settings, exec } from "herdr";
+import { hc, agents, run, props, closeOverlay, openOverlay, theme, shared, setShared, notify, settings, exec, terminals, panes } from "herdr";
 
 const keyChip = (text, t) => div().px(6).h(18).min_w(18).flex().items_center().justify_center().flex_none().rounded(5).border_1().border_color(t.input ?? t.border).bg(t.raised).text_size(11).font_medium().text_color(t.muted).child(text);
 const keyHints = (text, t) => h_flex().gap(14).items_center().min_w(0).overflow_hidden().children(text.split(" · ").map((seg) => {
@@ -16,12 +16,16 @@ const header = (title, hint, t) => h_flex().h(30).flex_none().pr(10).items_cente
   .child(div().h_full().pl(12).pr(6).flex().items_center().flex_none().text_size(12).font_medium().text_color(t.accent).child(title))
   .child(div().flex_1()).child(keyHints(hint, t));
 
-const ORDER = { blocked: 0, done: 1, working: 2, idle: 3 };
+const ORDER = { blocked: 0, done: 1, working: 2, idle: 3, parked: 4 };
+const plabel = (r) => r.labels?.pname || r.program?.name || r.agent || r.address;
 
 export default class JumpTm extends View {
   init(_props, cx) {
     this.q = ""; this.sel = 0; this.reply = false;
-    this.input = InputState.new({ value: "" });
+    // Parked terminals (running, no pane) are a last group, shown as "parked". Ctrl+Shift+U opens the switcher with props.filter "parked".
+    const first = props()?.filter === "parked" ? "parked" : "";
+    this.q = first;
+    this.input = InputState.new({ value: first });
     this.input.on("change", (_e, cx) => { this.q = this.input.value(); if (!this.reply) { this.sel = 0; this.selAddr = null; } cx.notify(); });
     this.input.on("submit", () => this.enter());
     this.input.focus();
@@ -35,10 +39,19 @@ export default class JumpTm extends View {
 
   list() {
     const q = this.reply ? "" : this.q.trim().toLowerCase();
-    return agents().map((a) => ({ a, hay: `${a.space_name} ${a.tab_name} ${a.title} ${a.app ?? ""} ${a.status}`.toLowerCase() }))
+    return [...agents(), ...this.parked()].map((a) => ({ a, hay: `${a.space_name} ${a.tab_name} ${a.title} ${a.app ?? ""} ${a.status}`.toLowerCase() }))
       .filter((x) => !q || q.split(/\s+/).every((w) => x.hay.includes(w)))
       .sort((x, y) => (ORDER[x.a.status] ?? 9) - (ORDER[y.a.status] ?? 9) || y.a.seq - x.a.seq).map((x) => x.a);
   }
+
+  parked() {
+    const shown = new Set(panes().map((p) => p.terminal).filter(Boolean));
+    return terminals().filter((x) => (x.state ?? "live") === "live" && !x.parent && !shown.has(x.address) && !agents().some((a) => a.address === x.address))
+      .map((x) => ({ address: x.address, space_name: "parked", tab_name: plabel(x), title: (x.cwd ?? "").replace(/^\/home\/[^/]+/, "~"), status: "parked", seq: 0, parked: true }));
+  }
+
+  // Parked rows: Enter brings it back as a split right of the focused pane, Ctrl+T as a tab, Ctrl+O peeks, Ctrl+X kills (after a confirmation).
+  unpark(a, place) { this.close(); run("terminal.keep", { terminal: a.address, place }); }
 
   // Screen of the highlighted agent (hc read, last lines), refreshed every 1.5 s, one request at a time.
   // Reads one agent's screen: stores its last lines and, if its status line has one, its context figure (kept in
@@ -88,7 +101,8 @@ export default class JumpTm extends View {
       if (!text) return;
       this.close();
       hc(["send", "--force", a.address, text]).then((r) => { if (r.code !== 0) notify({ title: "Reply failed", body: String(r.stderr ?? "").slice(0, 120), level: "warning", timeout: 4000 }); });
-    } else { this.close(); run("agent.focus", { terminal: a.address }); }
+    } else if (a.parked) this.unpark(a, "right");
+    else { this.close(); run("agent.focus", { terminal: a.address }); }
   }
 
   render() {
@@ -113,14 +127,20 @@ export default class JumpTm extends View {
         if (k === "down" || (ctrl && (k === "j" || k === "n"))) { this.selAddr = null; this.sel = l.length ? (this.sel + 1) % l.length : 0; cx.stop_propagation(); cx.notify(); }
         else if (k === "up" || (ctrl && (k === "k" || k === "p"))) { this.selAddr = null; this.sel = l.length ? (this.sel + l.length - 1) % l.length : 0; cx.stop_propagation(); cx.notify(); }
         else if (ctrl && k === "r" && cur) { this.reply = true; this.target = cur; this.q = ""; this.input.set_value(""); this.input.focus(); cx.stop_propagation(); cx.notify(); }
-        else if (ctrl && k === "z" && cur) {
+        else if (ctrl && cur?.parked && (k === "t" || k === "o" || k === "x")) {
+          if (k === "t") this.unpark(cur, "tab");
+          else if (k === "o") { this.close(); run("terminal.peek", { terminal: cur.address }); }
+          else { this.close(); openOverlay({ mod: "confirm", kind: "dialog", width: 420, props: { title: "Kill " + cur.tab_name + "?", detail: "Ends the terminal and whatever is running in it.", command: { name: "terminal.kill", args: { terminal: cur.address } } } }); }
+          cx.stop_propagation();
+        }
+        else if (ctrl && k === "z" && cur && !cur.parked) {
           const s = { ...(shared("snoozed") || {}) };
           if (s[cur.address] > Date.now()) delete s[cur.address]; else s[cur.address] = Date.now() + 30 * 60 * 1000;
           setShared("snoozed", s); cx.stop_propagation(); cx.notify();
         }
       })
       .w_full().h_full().min_h(0).rounded(10).overflow_hidden().border_1().border_color(t.border).bg(t.background).text_size(13).text_color(t.foreground)
-      .child(header(this.reply ? `Reply to ${this.target?.tab_name ?? "agent"}` : "Agents", this.reply ? "Enter send · Esc back" : "Enter jump · Ctrl N P move · Ctrl R reply · Ctrl Z snooze · Esc", t))
+      .child(header(this.reply ? `Reply to ${this.target?.tab_name ?? "agent"}` : "Agents", this.reply ? "Enter send · Esc back" : (cur?.parked ? "Enter split · Ctrl T tab · Ctrl O peek · Ctrl X kill · Esc" : "Enter jump · Ctrl N P move · Ctrl R reply · Ctrl Z snooze · Esc"), t))
       .child(v_flex().flex_1().min_h(0).p(14).gap(10)
         .child(Input.new(this.input).h(36).px(10).rounded(9).border_1().border_color(t.accent).bg(t.raised).text_size(12.8).text_color(t.foreground))
         .child(v_flex().flex_1().min_h(0).overflow_hidden().gap(2).children(this.reply
