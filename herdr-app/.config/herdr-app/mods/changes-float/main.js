@@ -892,7 +892,7 @@ export default class Changes extends View {
         .when(count("blocked") > 0, (e) => e.child(div().text_color(t.blocked).child(`${count("blocked")} need you`)))
         .when(count("done") > 0, (e) => e.child(div().text_color(t.done).child(`${count("done")} done`))))
       .children(cards)
-      .when(!cards.length, (e) => e.child(div().p(8).text_color(t.dim).child(this.prError || (this.repos ? "No git repository in this tab. Press P to pin one." : "Loading..."))));
+      .when(!cards.length, (e) => e.child(div().p(8).text_color(t.dim).child(this.prError || (this.repos ? "No git repository in this tab. Press P to pin one." : "Loading…"))));
   }
 
   // ---- PR detail inside the window (read via `gh pr view` / `gh pr diff`; actions only after an explicit confirm) ----
@@ -1133,9 +1133,9 @@ export default class Changes extends View {
         ? div().flex_1().min_h(0).relative().font_family(settings().font_family ?? "JetBrains Mono").text_size(11)
           .child(div().id("pr-diff-x").size_full().overflow_x_scrollbar().child(div().w_full().min_w(det.width).h_full().child(v_virtual_list("pr-diff", det.rows.length, 20, (i) => String(i), (range) => det.rows.slice(range.start, range.end).map((row) => this.diffRow(row, t))).size_full())))
           .child(Scrollbar.vertical("pr-diff").viewport_from_layout().absolute().inset_0())
-        : div().p(16).text_color(t.dim).child(det.diffState === "error" ? det.diffError : "Loading diff...");
+        : div().p(16).text_color(t.dim).child(det.diffState === "error" ? det.diffError : "Loading…");
     } else if (!d) {
-      body = div().p(16).text_color(t.dim).child(det.error ?? "Loading...");
+      body = div().p(16).text_color(t.dim).child(det.error ?? "Loading…");
     } else {
       const checks = (d.statusCheckRollup ?? []).map((x) => ({ name: x.name || x.context, st: x.conclusion || x.status || x.state || "" }));
       const cc = (st) => ["SUCCESS", "NEUTRAL", "SKIPPED"].includes(st) ? t.done : ["FAILURE", "ERROR", "TIMED_OUT", "CANCELLED", "ACTION_REQUIRED"].includes(st) ? t.blocked : t.working;
@@ -1286,7 +1286,7 @@ export default class Changes extends View {
           .when((d.labels ?? []).length > 0, (e) => e.child(div().max_w(160).truncate().flex_none().text_size(11).text_color(t.dim).child(d.labels.slice(0, 2).map((l) => l.name).join(", "))))
           .child(div().max_w(100).truncate().flex_none().text_size(11).text_color(t.dim).child(d.author?.login ?? ""))
           .child(div().w(60).flex_none().text_right().text_size(11).text_color(t.dim).child(ago(d.createdAt)))))
-        .when(!list.length, (e) => e.child(div().p(8).text_color(t.dim).child(this.iError || (this.issues ? (this.ifilter === "all" ? "No open issues" : "No open issues for this filter (F to change)") : "Loading issues…")))));
+        .when(!list.length, (e) => e.child(div().p(8).text_color(t.dim).child(this.iError || (this.issues ? (this.ifilter === "all" ? "No open issues" : "No open issues for this filter (F to change)") : "Loading…")))));
   }
 
   inboxBody(t) {
@@ -1372,7 +1372,7 @@ export default class Changes extends View {
           })
           .child(div().w(60).flex_none().text_right().text_size(11).text_color(t.dim).child(d.isMerged ? `merged ${ago(d.mergedAt)}` : ago(d.createdAt)))];
       }))
-      .when(!list.length, (e) => e.child(div().p(8).text_color(t.dim).child(this.prError || (this.repos ? "No open or recently merged PRs (drafts hidden)" : "Loading PRs…"))));
+      .when(!list.length, (e) => e.child(div().p(8).text_color(t.dim).child(this.prError || (this.repos ? "No open or recently merged PRs (drafts hidden)" : "Loading…"))));
   }
 
   changesBody(t, enabled) {
@@ -1383,7 +1383,7 @@ export default class Changes extends View {
           .child(div().w(14).text_size(11).text_color(f.status === "A" ? t.ansi2 : f.status === "D" ? t.ansi1 : f.status === "U" ? t.ansi1 : t.blocked).child(f.status))
           .child(h_flex().flex_1().min_w(0).child(div().text_color(t.dim).truncate().child(parts.length ? parts.join("/") + "/" : "")).child(div().max_w(260).min_w(0).truncate().text_color(this.open === f.path ? t.foreground : t.muted).child(name)))
           .when(f.add > 0, (e) => e.child(div().text_size(11).text_color(t.ansi2).child(`+${f.add}`))).when(f.del > 0, (e) => e.child(div().text_size(11).text_color(t.ansi1).child(`−${f.del}`)));
-      })).when(!this.files.length, (e) => e.child(div().p(8).text_color(t.dim).child(this.error || (this.loading ? "Loading changes…" : this.root ? "No uncommitted changes" : "No folder")))))
+      })).when(!this.files.length, (e) => e.child(div().p(8).text_color(t.dim).child(this.error || (this.loading ? "Loading…" : this.root ? "No uncommitted changes" : "No folder")))))
       .when(this.limited, el => el.child(div().px(12).py(4).text_size(11).text_color(t.dim).child("Showing the first 1,000 changed files")))
       .child(div().flex_1().min_h(0).relative().font_family(settings().font_family ?? "JetBrains Mono").text_size(11)
         .child(div().id("changes-diff-x").size_full().overflow_x_scrollbar()

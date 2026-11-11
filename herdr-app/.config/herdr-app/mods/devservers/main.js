@@ -396,7 +396,7 @@ export default class DevServers extends View {
       ]));
     });
     if (this.loaded && !rows.length) nodes.push(div().px(10).py(8).text_size(12).text_color(t.dim).child(this.error ?? "Nothing else is listening."));
-    if (!this.loaded) nodes.push(div().px(10).py(8).text_size(12).text_color(t.dim).child("Looking…"));
+    if (!this.loaded) nodes.push(div().px(10).py(8).text_size(12).text_color(t.dim).child("Loading…"));
 
     const caption = (text) => div().text_size(10).font_medium().text_color(t.accent).child(text.toUpperCase());
     // The form keeps Esc: help isn't reachable there.
