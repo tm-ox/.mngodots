@@ -65,6 +65,10 @@ const HELP = [
     ["?", "This help. Any key closes it."],
     ["Esc", "Close the mod."],
   ]],
+  ["tm-serve rows", [
+    ["s", "Stop it on tm-serve (dev-server stop / throwaway-mongo stop). Press twice to confirm."],
+    ["t · Enter", "Dev server: open a tab running ssh -L for its port, then browse http://localhost:<port>. Close the tab to end the tunnel."],
+  ]],
   ["Bookmark rows", [
     ["Enter", "Stopped: start it (Go). Running: open its first port in the browser."],
     ["o", "Show the live output of the running command in a peek."],
@@ -146,12 +150,37 @@ export default class DevServers extends View {
     const keys = [...groups.keys()].sort((a, b) => (a === "") - (b === "") || a.localeCompare(b));
     const rows = [];
     for (const k of keys) groups.get(k).forEach((l, i) => rows.push({ kind: "ls", l, group: k, first: i === 0 }));
-    return { bms: items, rows };
+    return { bms: items, rows, srv: this.serve() };
+  }
+
+  // dev-server and throwaway-mongo on tm-serve, read from status-git's shared("broker") (plain status lines).
+  serve() {
+    const b = shared("broker"), out = [];
+    for (const l of b?.dev ?? []) { const m = /^(\d{4,5}) (running|dead)(?:: (.*))?$/.exec(l); if (m) out.push({ kind: "srv", type: "dev", id: m[1], up: m[2] === "running", text: m[3] ?? "" }); }
+    for (const l of b?.mongo ?? []) { const m = /^([A-Za-z0-9._-]+) (running|dead)(?: (.*))?$/.exec(l); if (m) out.push({ kind: "srv", type: "mongo", id: m[1], up: m[2] === "running", text: m[3] ?? "" }); }
+    return out;
   }
 
   flat() {
-    const { bms, rows } = this.items();
-    return [...bms, ...rows];
+    const { bms, rows, srv } = this.items();
+    return [...bms, ...rows, ...srv];
+  }
+
+  // Stop on tm-serve: tm's key or click only, second press confirms. Tunnel: a visible tab running ssh -L that tm closes.
+  stopServe(it) {
+    const mark = "srv" + it.type + it.id;
+    if (this.askSt !== mark) { this.askSt = mark; return notify({ title: `Stop ${it.type === "dev" ? ":" + it.id : it.id} on tm-serve?`, body: "Press s (or Stop) again to confirm.", level: "warning" }); }
+    this.askSt = null;
+    const cmd = it.type === "dev" ? "dev-server" : "throwaway-mongo";
+    exec("sh", ["-c", '"$HOME/.local/bin/$1" stop "$2"', "sh", cmd, it.id], { on: "tm-serve" })
+      .then((r) => { if (r.code !== 0) notify({ title: "Not stopped", body: (r.stderr || r.stdout).trim().split("\n")[0], level: "error" }); setShared("broker-ask", Date.now()); })
+      .catch((e) => notify({ title: "Not stopped", body: String(e.message ?? e), level: "error" }));
+  }
+
+  tunnel(it) {
+    if (it.type !== "dev" || !it.up) return notify({ title: "Tunnel is for a running dev server", level: "info" });
+    run("terminal.open", { argv: ["ssh", "-N", "-L", `${it.id}:127.0.0.1:${it.id}`, "tm-serve"], place: "tab", name: "tunnel-" + it.id });
+    notify({ title: `Tunnel :${it.id} opened in a tab`, body: `Browse http://localhost:${it.id}. Close that tab to end it.`, level: "info" });
   }
 
   // Actions
@@ -288,6 +317,10 @@ export default class DevServers extends View {
     if (k === "?" || (k === "/" && e.modifiers?.shift)) { this.helpOpen = true; cx.stop_propagation(); cx.notify(); return; }
     const items = this.flat(), it = items[this.at];
     if (k === "escape") return closeOverlay(props().overlay);
+    if (it?.kind === "srv" && ["r", "s", "b", "o", "d", "t", "enter"].includes(k)) {
+      if (k === "s") this.stopServe(it); else if (k === "t" || k === "enter") this.tunnel(it);
+      cx.stop_propagation(); cx.notify(); return;
+    }
     if (k === "down" || k === "j") this.at = Math.min(items.length - 1, this.at + 1);
     else if (k === "up" || k === "k") this.at = Math.max(0, this.at - 1);
     else if (k === "enter") this.primary(it, cx);
@@ -304,7 +337,7 @@ export default class DevServers extends View {
 
   render(cx) {
     const t = theme();
-    const { bms, rows } = this.items(), items = [...bms, ...rows];
+    const { bms, rows, srv } = this.items(), items = [...bms, ...rows, ...srv];
     this.at = Math.max(0, Math.min(this.at, items.length - 1));
     const sel = items[this.at];
 
@@ -342,11 +375,24 @@ export default class DevServers extends View {
         dot(t.ansi2),
         div().w(64).flex_none().text_size(12).text_color(t.accent).child(`:${l.port}`),
         div().flex_1().min_w(0).truncate().text_color(i === this.at ? t.foreground : t.muted).child(short(l)),
+        div().flex_none().w(60).text_size(11).text_color(t.dim).child("laptop"),
         div().flex_none().w(48).text_right().text_size(11).text_color(t.dim).child(age(l.up)),
         act(`o-${l.pid}-${l.port}`, "Open", () => this.open(l)),
         act(`r-${l.pid}-${l.port}`, "Restart", (cx) => this.restartListener(l, cx)),
         act(`s-${l.pid}-${l.port}`, "Stop", () => this.kill(l)),
         act(`b-${l.pid}-${l.port}`, "Bookmark", (cx) => this.bookmarkListener(l, cx)),
+      ]));
+    });
+    if (srv.length) nodes.push(label("tm-serve", "from the broker probe, refreshed every 20 s"));
+    srv.forEach((it, j) => {
+      const i = bms.length + rows.length + j;
+      nodes.push(row(`srv-${it.type}-${it.id}`, i, [
+        dot(it.up ? t.ansi2 : t.dim),
+        div().w(64).flex_none().truncate().text_size(12).text_color(t.accent).child(it.type === "dev" ? `:${it.id}` : it.id),
+        div().flex_1().min_w(0).truncate().text_color(i === this.at ? t.foreground : t.muted).child(it.type === "dev" ? (it.up ? it.text : "dead") : (it.up ? `mongo ${it.text}` : "mongo dead")),
+        div().flex_none().w(60).text_size(11).text_color(t.dim).child("tm-serve"),
+        ...(it.type === "dev" && it.up ? [act(`tn-${it.id}`, "Tunnel", () => this.tunnel(it))] : []),
+        act(`ss-${it.type}-${it.id}`, "Stop", () => this.stopServe(it)),
       ]));
     });
     if (this.loaded && !rows.length) nodes.push(div().px(10).py(8).text_size(12).text_color(t.dim).child(this.error ?? "Nothing else is listening."));
@@ -356,6 +402,7 @@ export default class DevServers extends View {
     // The form keeps Esc: help isn't reachable there.
     const hint = this.helpOpen ? []
       : this.form ? [["Enter", "next"], ["Tab", "switch"], ["Esc", "cancel"]]
+      : sel?.kind === "srv" ? [["s", "stop"], ["t", "tunnel"]]
       : sel?.kind === "bm" ? [["o", "output"], ["r", "restart"], ["s", "stop"], ["d", "remove"]]
       : [["r", "restart"], ["s", "stop"], ["b", "bookmark"]];
 
@@ -366,7 +413,7 @@ export default class DevServers extends View {
           .child(div().id("ds-title").h_full().pl(12).pr(6).flex().items_center().text_size(12).font_medium().text_color(t.accent).child("Servers"))
           .child(div().id("ds-new").h_full().pl(12).pr(6).flex().items_center().cursor_pointer().text_size(12).text_color(t.dim).hover((x) => x.text_color(t.muted))
             .on_click((_e, cx) => this.openForm(null, cx)).child(h_flex().gap(6).items_center().child(chip("n")).child("New bookmark")))
-          .child(div().flex_1().min_w(0).truncate().px(10).text_size(12).text_color(t.dim).child(`${this.listeners.length} listening · ${bms.length} bookmarked`))
+          .child(div().flex_1().min_w(0).truncate().px(10).text_size(12).text_color(t.dim).child(`${this.listeners.length} listening · ${bms.length} bookmarked${srv.length ? ` · ${srv.length} on tm-serve` : ""}`))
           .when(hint.length > 0, (e) => e.child(hints(hint)))
           .when(this.helpOpen, (e) => e.child(div().text_size(12).text_color(t.dim).mr(6).child("back")))
           .when(!this.form, (e) => e.child(div().pl(this.helpOpen ? 0 : 14).flex().items_center().child(chip("?")))),
