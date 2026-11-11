@@ -13,6 +13,12 @@ import { run, theme, shared, setShared, nextCommand, exec, hc, home, terminals, 
 // moved onto the panel (pane.go), `focused().pane` is null and pane.go works as usual.
 const leavePanel = (direction) => { const f = focused(); if (direction === "left" && f?.pane) run("pane.focus", { pane: f.pane }); else run("pane.go", { direction }); };
 const REV_HOST = "tm-serve";
+// Ctrl+Shift+V (what voice-input.sh sends to herdr-app, which it treats as a terminal): a text box only knows Ctrl+V, so paste the clipboard in here.
+const dictate = (e, cx, box, single = true) => {
+  if (!(e.modifiers?.control && e.modifiers?.shift && String(e.key).toLowerCase() === "v") || !box) return false;
+  exec("wl-paste", ["-n"]).then((r) => { if (r.code === 0 && r.stdout) { box.replace(single ? String(r.stdout).replace(/\r?\n/g, " ") : String(r.stdout)); box.focus(); } });
+  cx.stop_propagation(); return true;
+};
 const LS = "inbox-folded";
 const loadFolded = () => { try { return new Set(JSON.parse(localStorage.getItem(LS) ?? "[]")); } catch { return new Set(); } };
 const saveFolded = (s) => { try { localStorage.setItem(LS, JSON.stringify([...s])); } catch {} };
@@ -325,6 +331,7 @@ export default class InboxPanel extends View {
 
   key(e, cx) {
     const k = e.key, items = this.items();
+    if (this.adding && dictate(e, cx, this.addState)) return;
     if (this.adding) { if (k === "escape") this.endAdd(cx); else if (k === "tab") this.cycleCal(cx); else return; cx.stop_propagation(); return; }
     if (e.modifiers?.alt && ["h", "j", "k", "l"].includes(k)) { leavePanel({ h: "left", j: "down", k: "up", l: "right" }[k]); cx.timer.after(150, (cx) => cx.notify()); cx.stop_propagation(); return; }
     if (k === "escape") { leavePanel("left"); cx.timer.after(150, (cx) => cx.notify()); cx.stop_propagation(); return; }

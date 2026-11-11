@@ -14,6 +14,13 @@ import { View, div, list } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input, TextView, Scrollbar } from "gpui-base";
 import { hc, focused, run, exec, theme, props, closeOverlay, readTextFile, settings } from "herdr";
 
+// Ctrl+Shift+V (what voice-input.sh sends to herdr-app, which it treats as a terminal): a text box only knows Ctrl+V, so paste the clipboard in here.
+const dictate = (e, cx, box, single = true) => {
+  if (!(e.modifiers?.control && e.modifiers?.shift && String(e.key).toLowerCase() === "v") || !box) return false;
+  exec("wl-paste", ["-n"]).then((r) => { if (r.code === 0 && r.stdout) { box.replace(single ? String(r.stdout).replace(/\r?\n/g, " ") : String(r.stdout)); box.focus(); } });
+  cx.stop_propagation(); return true;
+};
+
 // Header hints as key chips ("Enter open · Esc" -> [Enter] open [Esc]); same look as the devservers mod.
 const keyChip = (text, t) => div().px(6).h(18).min_w(18).flex().items_center().justify_center().flex_none().rounded(5).border_1().border_color(t.input ?? t.border).bg(t.raised).text_size(11).font_medium().text_color(t.muted).child(text);
 const keyHints = (text, t) => h_flex().gap(14).items_center().min_w(0).overflow_hidden().children(text.split(" · ").map((seg) => {
@@ -311,6 +318,7 @@ export default class FileFind extends View {
       .on_key_down((e, cx) => {
         const k = e.key;
         const ctrl = e.modifiers.control;
+        if (!this.pfocus && dictate(e, cx, this.input)) return;
         if (k === "escape") return closeOverlay(props().overlay);
         if (this.helpOpen) { this.helpOpen = false; cx.stop_propagation(); cx.notify(); return; }
         // `?` only from the preview: in the search box it is typed text.

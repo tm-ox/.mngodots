@@ -10,6 +10,13 @@ import { View, div } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input, TextareaState, Textarea, CalendarState } from "gpui-base";
 import { exec, theme, props, closeOverlay, home, shared, setShared } from "herdr";
 
+// Ctrl+Shift+V (what voice-input.sh sends to herdr-app, which it treats as a terminal): a text box only knows Ctrl+V, so paste the clipboard in here.
+const dictate = (e, cx, box, single = true) => {
+  if (!(e.modifiers?.control && e.modifiers?.shift && String(e.key).toLowerCase() === "v") || !box) return false;
+  exec("wl-paste", ["-n"]).then((r) => { if (r.code === 0 && r.stdout) { box.replace(single ? String(r.stdout).replace(/\r?\n/g, " ") : String(r.stdout)); box.focus(); } });
+  cx.stop_propagation(); return true;
+};
+
 const PRIOS = [["None", 0], ["High", 1], ["Medium", 5], ["Low", 9]];
 const STATUSES = [["Open", "NEEDS-ACTION"], ["In progress", "IN-PROCESS"], ["Done", "COMPLETED"], ["Cancelled", "CANCELLED"]];
 const CATS = ["inbox", "todo", "idea", "reference", "agent", "tm", "ynk", "wrk"];
@@ -408,6 +415,7 @@ export default class Memo extends View {
 
   key(e, cx) {
     const k = e.key, ctrl = e.modifiers?.control;
+    for (const name of ["body", "title", "due", "newcat", "search"]) if (this.focused.has(name)) { if (dictate(e, cx, this[name], name !== "body")) return; break; }
     if (k === "escape") { this.close(cx); cx.stop_propagation(); return; }
     if (ctrl && (k === "h" || k === "l") && this.zoneKey(k, cx)) { cx.stop_propagation(); return; }
     if (this.typing) {

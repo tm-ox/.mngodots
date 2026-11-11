@@ -2,7 +2,14 @@
 // Enter saves, an empty name clears it, Esc cancels.
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input } from "gpui-base";
-import { hc, props, closeOverlay, theme } from "herdr";
+import { hc, props, closeOverlay, theme, exec } from "herdr";
+
+// Ctrl+Shift+V (what voice-input.sh sends to herdr-app, which it treats as a terminal): a text box only knows Ctrl+V, so paste the clipboard in here.
+const dictate = (e, cx, box, single = true) => {
+  if (!(e.modifiers?.control && e.modifiers?.shift && String(e.key).toLowerCase() === "v") || !box) return false;
+  exec("wl-paste", ["-n"]).then((r) => { if (r.code === 0 && r.stdout) { box.replace(single ? String(r.stdout).replace(/\r?\n/g, " ") : String(r.stdout)); box.focus(); } });
+  cx.stop_propagation(); return true;
+};
 
 // Dialog look shared with file-find / changes-float / devservers: card, 30px header (title + key-chip hints).
 const keyChip = (text, t) => div().px(6).h(18).min_w(18).flex().items_center().justify_center().flex_none().rounded(5).border_1().border_color(t.input ?? t.border).bg(t.raised).text_size(11).font_medium().text_color(t.muted).child(text);
@@ -37,7 +44,7 @@ export default class NameTerminal extends View {
   render() {
     const t = theme();
     return v_flex().id("name-terminal").track_focus(this.handle)
-      .on_key_down((e, cx) => { if (e.key === "escape") { closeOverlay(props().overlay); cx.stop_propagation(); } })
+      .on_key_down((e, cx) => { if (dictate(e, cx, this.input)) return; if (e.key === "escape") { closeOverlay(props().overlay); cx.stop_propagation(); } })
       .w_full().min_h(0).rounded(10).overflow_hidden().border_1().border_color(t.border).bg(t.background).text_size(13).text_color(t.foreground)
       .child(header("Name terminal", "Enter save · Esc", t))
       .child(
