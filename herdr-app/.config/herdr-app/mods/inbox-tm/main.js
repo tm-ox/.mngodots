@@ -32,7 +32,7 @@ const nextWhen = (ts) => { const d = new Date(ts * 1000), diff = (d - Date.now()
 const GROUP = { tasks: "mine", appr: "repo", prs: "repo", wait: "repo" }; // a rule is drawn where the group changes
 const PINNED = ["sched", "dev"]; // occasional sections: pinned under a divider at the bottom of the panel
 const WAIT_DAYS = 3; // a waiting item older than this turns the group count amber
-const AUTO_FOLD = ["dev", "sched", "wait"]; // occasional sections: folded on load and again when the panel loses focus
+const AUTO_FOLD = ["dev", "sched", "wait"]; // occasional sections: folded on load only; the state is kept after that
 const MARK = "devservers:";
 const BM_KEY = "devservers.bookmarks";
 // Command without the project's own path and node_modules/.bin, so "astro dev" reads as "astro dev".
@@ -125,7 +125,7 @@ export default class InboxPanel extends View {
     if (!this.inb || Date.now() - this.inb.at > 45000) setShared("inbox-ask", Date.now());
     // No blur event exists: watch the handle, so the focus border follows the keyboard within 0.25 s.
     this.wasFocused = false;
-    cx.timer.every(250, (cx) => { const f = this.handle.is_focused(); if (f !== this.wasFocused) { this.wasFocused = f; setShared("pf:inbox-tm", f); if (!f) this.collapseAuto(); cx.notify(); } });
+    cx.timer.every(250, (cx) => { const f = this.handle.is_focused(); if (f !== this.wasFocused) { this.wasFocused = f; setShared("pf:inbox-tm", f); cx.notify(); } });
     cx.timer.every(3000, (cx) => {
       const b = shared("inbox"), er = shared("inbox-error") || "";
       if ((b && b.at !== this.inb?.at) || er !== this.err) { if (b) this.inb = b; this.err = er; }
@@ -510,7 +510,7 @@ export default class InboxPanel extends View {
     };
     const items = this.items();
     // Explicit height (a scroll container will not shrink to its content): headers 31px, schedule rows 29px, server rows 47px, capped.
-    const bkNow = shared("broker"), pinWant = (bkNow ? 48 : 26) + items.filter((it) => PINNED.includes(it.key)).reduce((a, it) => a + (it.head ? 33 : it.kind === "dev" || it.kind === "bm" || it.kind === "srv" ? 50 : 31), 0), pinH = Math.min(520, pinWant), pinCapped = pinWant > 520;
+    const bkNow = shared("broker"), pinWant = (bkNow ? 34 : 14) + items.filter((it) => PINNED.includes(it.key)).reduce((a, it) => a + (it.head ? 33 : it.kind === "dev" || it.kind === "bm" || it.kind === "srv" ? 50 : 31), 0), pinH = Math.min(520, pinWant), pinCapped = pinWant > 520;
     const addRow = h_flex().id("inbox-add-row").flex_none().px(6).py(4).gap(6).items_center().rounded(7).border_1().border_color(t.accent).bg(t.raised)
       .child(div().id("inbox-add-cal").flex_none().h(18).px(6).flex().items_center().rounded(5).border_1().border_color(t.border).cursor_pointer().text_size(11).text_color(t.accent)
         .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click((_e, cx) => this.cycleCal(cx)).child(this.cal.toUpperCase()))
