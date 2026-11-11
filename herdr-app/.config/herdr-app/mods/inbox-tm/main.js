@@ -19,7 +19,7 @@ const saveFolded = (s) => { try { localStorage.setItem(LS, JSON.stringify([...s]
 
 const DAY = 864e5;
 const SHOW_READY = false; // approved PRs of mine: off while tm does not merge; turn on for repos where tm merges
-const LABEL = { fix: "to fix", review: "to review", rerev: "re-review", talk: "comments", ready: "ready", overdue: "overdue", today: "today", running: "running", stopped: "stopped", on: "on" };
+const LABEL = { fix: "to fix", review: "to review", rerev: "re-review", talk: "comments", ready: "ready", overdue: "overdue", today: "today", running: "running", stopped: "stopped", on: "on", pending: "pending" };
 const HCRON = async (args) => { const r = await exec("sh", ["-c", '"$HOME/.local/bin/hcron" "$@"', "hcron", ...args], { on: "tm-serve", timeout: 20000 }); if (r.code !== 0) throw new Error("hcron failed"); return JSON.parse(r.stdout); };
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const nextWhen = (ts) => { const d = new Date(ts * 1000), diff = (d - Date.now()) / 1000, p = (n) => String(n).padStart(2, "0"); return diff < 3600 ? `in ${Math.max(1, Math.round(diff / 60))}m` : diff < 86400 ? `in ${Math.floor(diff / 3600)}h` : `${DOW[d.getDay()]} ${p(d.getHours())}:${p(d.getMinutes())}`; };
@@ -119,7 +119,7 @@ export default class InboxPanel extends View {
   loadDrafts(cx) {
     cx.spawn(async (cx) => {
       try {
-        const r = await exec("ssh", ["-o", "BatchMode=yes", "-o", "ConnectTimeout=5", REV_HOST, "sh -c 'ls \"$HOME\"/workspace/rev/docs/ 2>/dev/null'"]);
+        const r = await exec("sh", ["-c", 'ls "$HOME"/workspace/rev/docs/ 2>/dev/null'], { on: REV_HOST });
         if (r.code !== 0) return;
         const set = new Set();
         for (const f of r.stdout.split("\n")) { const m = /^\d{4}-\d{2}-\d{2}-(.+)-(\d+)-review\.md$/.exec(f.trim()); if (m) set.add(m[1] + "#" + m[2]); }
@@ -246,7 +246,9 @@ export default class InboxPanel extends View {
   items() {
     const out = [];
     const push = (key, name, n, counts, rows, force) => { if (!n && !force) return; out.push({ id: "h:" + key, head: true, key, name, n, counts }); if (!this.folded.has(key)) out.push(...rows); };
-    const inb = this.inb;
+    const inb = this.inb, bk = shared("broker");
+    // Broker requests waiting for tm on tm-serve (read only; tm answers in gb-ok) plus the broker health line.
+    if (bk) push("appr", "Approvals", bk.queue.length, [["pending", bk.queue.length]].filter(([, c]) => c), [...bk.queue.map((q) => ({ id: "q:" + q.id, key: "appr", kind: "appr", q })), { id: "k:health", key: "appr", kind: "health", bk }], true);
     if (inb) {
       const s = sections(inb);
       const cats = [["fix", s.fix], ["review", s.toReview], ["rerev", s.rerev], ["talk", s.talk], ["ready", s.ready]];
@@ -314,7 +316,7 @@ export default class InboxPanel extends View {
     else if ((k === "s" || k === "r") && cur?.kind === "bm") { this.startBm(cur.b, cx); }
     else if ((k === "s" || k === "r") && cur?.kind === "dev") { this.act(cur.l, k === "s" ? "stop" : "restart", cx); }
     else if (k === "a") this.foldAll(cx);
-    else if (k === "r") setShared("inbox-ask", Date.now());
+    else if (k === "r") { setShared("inbox-ask", Date.now()); setShared("broker-ask", Date.now()); }
     else if (k === "o") { setShared("git-tab", "inbox"); run("mod.open", { name: "changes-float" }); }
     else return;
     cx.stop_propagation(); cx.notify();
@@ -324,10 +326,19 @@ export default class InboxPanel extends View {
 
   activate(it) {
     if (it.kind === "pr") this.open(it.d);
+    else if (it.kind === "appr") this.openGbOk();
+    else if (it.kind === "health") setShared("broker-ask", Date.now());
     else if (it.kind === "dev") exec("xdg-open", [`http://localhost:${it.l.port}`]).catch(() => {});
     else if (it.kind === "job") { run("layout.select", { stack: "panel-body", child: "sched" }); this.after150("sched-tm.focus"); }
     else if (it.kind === "bm") this.startBm(it.b, this.cxRef);
     else { if (it.k) setShared("memo-open", it.k.id); run("mod.open", { name: "memo-tm" }); }
+  }
+
+  // Opens gb-ok on tm-serve in a new tab of tm's own terminal: the tty there is the approval boundary, so the mod never approves.
+  openGbOk() {
+    if (terminals().some((t) => (t.state ?? "live") === "live" && t.name === "gb-ok")) return notify({ title: "gb-ok is already open", body: "Answer it in its tab", level: "info" });
+    run("terminal.open", { argv: ["ssh", "-t", "tm-serve", "exec ~/.local/bin/gb-ok"], place: "tab", name: "gb-ok" });
+    this.cxRef?.timer.after(20000, () => setShared("broker-ask", Date.now()));
   }
 
   open(d) {
@@ -341,7 +352,7 @@ export default class InboxPanel extends View {
     const lateN = (this.tasks ?? []).filter((k) => k.due && k.due.slice(0, 10) <= ymd(new Date())).length;
     const iconBtn = (id, text, onClick) => div().id(id).w(24).h(24).flex().items_center().justify_center().flex_none().rounded(6).cursor_pointer().text_size(13).text_color(t.muted).hover((x) => x.bg(t.hover)).on_click(onClick).child(text);
     const chip = (text, color) => div().flex_none().h(16).px(6).flex().items_center().rounded(5).border_1().border_color(t.border).text_size(10.5).text_color(color).child(text);
-    const colorOf = { fix: t.blocked, review: t.blocked, rerev: t.blocked, talk: t.working, ready: t.done, overdue: t.blocked, today: t.working, running: t.done, stopped: t.dim, on: t.done };
+    const colorOf = { fix: t.blocked, review: t.blocked, rerev: t.blocked, talk: t.working, ready: t.done, overdue: t.blocked, today: t.working, running: t.done, stopped: t.dim, on: t.done, pending: t.blocked };
     const ciTail = (d) => (d.ci === "fail" ? "CI failing" : d.decision === "CHANGES_REQUESTED" ? "changes asked" : "");
     const tailOf = { fix: ciTail, review: (d) => (Date.now() - Date.parse(d.createdAt) > 3 * DAY ? "waiting" : ""), rerev: (d) => d.flag };
     const row = (it) => {
@@ -406,6 +417,21 @@ export default class InboxPanel extends View {
           .child(div().flex_none().h(20).px(8).flex().items_center().rounded(5).border_1().border_color(t.border).text_size(11).text_color(starting ? t.dim : t.accent).child(starting ? "starting…" : "Start")))
         .child(div().min_w(0).truncate().text_size(11).text_color(t.dim).child(`stopped · ${(b.folder ?? "").replace(/^\/home\/[^/]+/, "~")}`));
     };
+    const arow = (it) => {
+      const q = it.q, on = focused && this.sel === it.id, where = (q.repo ?? "").split("/").pop() + (q.pr ? ` #${q.pr}` : q.branch ? ` ${q.branch}` : "");
+      return v_flex().id(it.id).flex_none().px(10).py(5).gap(2).rounded(7).cursor_pointer().bg(on ? t.selected : t.background).hover((x) => x.bg(on ? t.selected : t.hover))
+        .on_click(() => this.activate(it))
+        .child(div().min_w(0).truncate().text_color(on ? t.foreground : t.muted).child(q.title || `${q.kind} ${where}`))
+        .child(h_flex().gap(6).items_center().min_w(0)
+          .child(chip(q.kind + (q.mode ? " " + q.mode.replace(/^--/, "") : ""), t.blocked))
+          .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(t.accent).child(where))
+          .child(chip(age(new Date(q.at).toISOString()), t.dim)));
+    };
+    const hrow = (it) => {
+      const b = it.bk, stale = !b.syncAt || Date.now() - b.syncAt > 2 * 3600e3, bad = !b.ok || stale;
+      const text = !b.ok ? "tm-serve not reachable" : b.syncAt ? `broker: last sync ${age(new Date(b.syncAt).toISOString())} ago${stale ? " (stale)" : ""}` : "broker: no sync logged";
+      return h_flex().id(it.id).flex_none().px(10).py(3).gap(6).items_center().child(div().w(7).h(7).flex_none().rounded(4).bg(bad ? t.blocked : t.done)).child(div().min_w(0).truncate().text_size(11).text_color(bad ? t.blocked : t.dim).child(text));
+    };
     const more = (it) => div().id(it.id).px(10).py(4).text_size(11).text_color(t.dim).child(it.text);
     const head = (it) => {
       const on = focused && this.sel === it.id, open = !this.folded.has(it.key);
@@ -423,7 +449,7 @@ export default class InboxPanel extends View {
       .child(div().id("inbox-add-cal").flex_none().h(18).px(6).flex().items_center().rounded(5).border_1().border_color(t.border).cursor_pointer().text_size(10.5).text_color(t.accent)
         .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click((_e, cx) => this.cycleCal(cx)).child(this.cal.toUpperCase()))
       .child(Input.new(this.addState).flex_1().min_w(0).h(24).text_size(12.5).text_color(t.foreground));
-    const draw = (it) => (it.head ? head(it) : it.kind === "add" ? addRow : it.kind === "task" ? trow(it) : it.kind === "dev" ? drow(it) : it.kind === "bm" ? brow(it) : it.kind === "job" ? jrow(it) : it.kind === "more" ? more(it) : row(it));
+    const draw = (it) => (it.head ? head(it) : it.kind === "add" ? addRow : it.kind === "appr" ? arow(it) : it.kind === "health" ? hrow(it) : it.kind === "task" ? trow(it) : it.kind === "dev" ? drow(it) : it.kind === "bm" ? brow(it) : it.kind === "job" ? jrow(it) : it.kind === "more" ? more(it) : row(it));
     return v_flex().id("inbox-panel").track_focus(this.handle).on_key_down((e, cx) => this.key(e, cx)).size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(focused ? t.accent : t.border).text_color(t.foreground).text_size(13)
       .child(h_flex().h(30).flex_none().px(14).gap(8).items_center().border_b(1).border_color(t.border)
         .child(div().id("inbox-title").font_semibold().cursor_pointer().on_click(() => { setShared("git-tab", "inbox"); run("mod.open", { name: "changes-float" }); }).child("Inbox"))
@@ -437,6 +463,6 @@ export default class InboxPanel extends View {
         .when(Boolean(s) && s.covered > 0, (el) => el.child(div().px(10).pt(10).text_size(11).text_color(t.dim).child(`${s.covered} more already approved by others`)))
         .when(Boolean(this.err && s), (el) => el.child(div().px(10).pt(8).text_size(11).text_color(t.blocked).child(this.err))))
       .when(items.some((it) => PINNED.includes(it.key)), (el) => el.child(v_flex().id("inbox-pinned").flex_none().h(pinH).overflow_y_scrollbar().px(8).pb(6).pt(2).gap(1).border_t(1).border_color(t.border).children(items.filter((it) => PINNED.includes(it.key)).map(draw))))
-      .when(focused, (el) => el.child(div().flex_none().px(14).py(6).border_t(1).border_color(t.border).truncate().text_size(11).text_color(t.dim).child("j k move (wraps) · g G first / last · ← → fold · a fold all · Enter open (schedule: manage) · n new task · x tick · d delete task · s stop · r restart / start (server) or refresh · Esc leave")));
+      .when(focused, (el) => el.child(div().flex_none().px(14).py(6).border_t(1).border_color(t.border).truncate().text_size(11).text_color(t.dim).child("j k move (wraps) · g G first / last · ← → fold · a fold all · Enter open (approval: gb-ok · schedule: manage) · n new task · x tick · d delete task · s stop · r restart / start (server) or refresh · Esc leave")));
   }
 }

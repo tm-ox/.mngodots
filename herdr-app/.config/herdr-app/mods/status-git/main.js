@@ -1,6 +1,28 @@
 import { View, div, svg } from "gpui-kit";
 import { h_flex } from "gpui-base";
-import { spaces, agents, theme, run, window, focused, hc, panes, notify, setShared, shared } from "herdr";
+import { spaces, agents, theme, run, window, focused, hc, exec, panes, notify, setShared, shared } from "herdr";
+
+// tm-serve, read only (plain file reads and status commands; nothing here approves, rejects or starts anything):
+// pending broker requests (queue/*.json, one line each after the mtime), the last `sync` entry of the audit log,
+// and the status of dev-server and throwaway-mongo. Published as shared("broker").
+const BROKER_SCRIPT = `B="$HOME/.local/share/gh-broker"
+for f in "$B"/queue/*.json; do [ -f "$f" ] || continue; echo "Q $(stat -c %Y "$f")"; tr '\\n' ' ' <"$f"; echo; done
+echo "S $(grep '"cmd": "sync"' "$B/audit.jsonl" 2>/dev/null | tail -n 1 | grep -o '"t": [0-9]*' | grep -o '[0-9]*')"
+echo "D"; "$HOME/.local/bin/dev-server" status 2>&1
+echo "M"; "$HOME/.local/bin/throwaway-mongo" status 2>&1`;
+function parseBroker(out) {
+  const queue = [], dev = [], mongo = [];
+  let syncAt = 0, mode = "", mt = 0;
+  for (const line of out.split("\n")) {
+    if (mode === "q") { mode = ""; try { const q = JSON.parse(line); queue.push({ id: q.id, kind: q.kind, repo: q.repo, branch: q.branch, pr: q.pr, mode: q.mode, title: q.title, profile: q.profile, at: mt * 1000 }); } catch {} continue; }
+    if (line.startsWith("Q ")) { mt = Number(line.slice(2)) || 0; mode = "q"; }
+    else if (line.startsWith("S ")) syncAt = (Number(line.slice(2)) || 0) * 1000;
+    else if (line === "D" || line === "M") mode = line.toLowerCase();
+    else if (line.trim() && mode === "d") dev.push(line.trim());
+    else if (line.trim() && mode === "m") mongo.push(line.trim());
+  }
+  return { queue: queue.sort((a, b) => a.at - b.at), dev, mongo, syncAt };
+}
 
 // Repo pinned to the active tab (else its space): the agents run in ~/workspace while the code lives elsewhere.
 // Stored in shared("git-pins") as { [tabId | "space:"+spaceId]: [repo paths] }; Herdr saves shared state itself.
@@ -97,8 +119,30 @@ export default class WorkspaceStatus extends View {
     this.listen(cx);
     this.prs(cx);
     this.inbox(cx);
+    this.broker = null; this.brokerBusy = false; this.brokerAt = 0;
+    this.brokerPoll(cx);
     let tick = 0;
-    cx.timer.every(5000, (cx) => { this.poll(cx); this.prs(cx); this.inbox(cx); if (tick++ % 3 === 0) this.listen(cx); });
+    cx.timer.every(5000, (cx) => { this.poll(cx); this.prs(cx); this.inbox(cx); if (tick++ % 3 === 0) this.listen(cx); this.brokerPoll(cx); });
+  }
+
+  // tm-serve broker queue, sync age and dev lamps: every 20 s, or sooner when a mod writes shared("broker-ask").
+  brokerPoll(cx) {
+    const ask = shared("broker-ask") || 0;
+    if (this.brokerBusy || (Date.now() - this.brokerAt < 20000 && ask <= this.brokerAt)) return;
+    this.brokerBusy = true; this.brokerAt = Date.now();
+    cx.spawn(async (cx) => {
+      try {
+        const r = await exec("sh", ["-c", BROKER_SCRIPT], { on: "tm-serve" });
+        if (r.code !== 0) throw new Error("tm-serve probe failed");
+        const b = { at: Date.now(), ok: true, ...parseBroker(r.stdout) };
+        if (JSON.stringify({ ...b, at: 0 }) !== JSON.stringify({ ...(this.broker ?? {}), at: 0 })) cx.notify();
+        this.broker = b; setShared("broker", b);
+      } catch (e) {
+        const b = { ...(this.broker ?? { queue: [], dev: [], mongo: [], syncAt: 0 }), at: Date.now(), ok: false, err: String(e.message ?? e) };
+        this.broker = b; setShared("broker", b); cx.notify();
+      }
+      this.brokerBusy = false;
+    });
   }
 
   // Changed-file count of the focused terminal's repo (clicking it opens the floating Changes window).
@@ -271,6 +315,9 @@ export default class WorkspaceStatus extends View {
     const list = agents();
     const snz = shared("snoozed") || {}, isSnz = (a) => snz[a.address] > Date.now();
     const needs = list.filter(a => a.status === "blocked" && !isSnz(a)).length;
+    const queued = this.broker?.queue?.length ?? 0;
+    this.devUp = (this.broker?.dev ?? []).filter((l) => / running/.test(l));
+    this.mongoUp = (this.broker?.mongo ?? []).filter((l) => / running /.test(l));
     const label = (icon, text) => h_flex().gap(6).items_center().child(svg(`mods/workspace-chrome/${icon}.svg`).size(13)).child(text);
     return h_flex().size_full().px(14).gap(16).items_center().bg(t.chrome).border_t(1).border_color(t.border).text_size(11.8).text_color(t.muted)
       .child(label(space?.machine ? "server" : "monitor", space?.machine ?? "This computer"))
@@ -290,8 +337,10 @@ export default class WorkspaceStatus extends View {
       .when(this.serving.length > 0, el => el.child(h_flex().gap(8).items_center().text_color(t.working)
         .children(this.serving.slice(0, 4).map(v => div().child(`▲ :${v.port} ${v.cwd.split("/").pop()}`)))
         .when(this.serving.length > 4, e => e.child(div().child(`+${this.serving.length - 4}`)))))
+      .when(this.devUp.length + this.mongoUp.length > 0, el => el.child(div().id("serve-chip").cursor_pointer().text_color(t.working).on_click(() => run("mod.open", { name: "devservers" }))
+        .child(`tm-serve ${[...this.devUp.map((l) => "▲ :" + l.split(" ")[0]), ...(this.mongoUp.length ? [`mongo ${this.mongoUp.length}`] : [])].join(" · ")}`)))
       .child(h_flex().gap(6).items_center().child(div().size(6).rounded(3).bg(t.dim)).child(`${list.length} agents`)
-        .when(needs > 0, el => el.child(div().text_color(t.blocked).child(`· ${needs} needs you`)))
+        .when(needs + queued > 0, el => el.child(div().id("needs-you").cursor_pointer().text_color(t.blocked).on_click(() => run("mod.open", { name: "changes-float" })).child(`· ${needs + queued} needs you${queued ? ` (${queued} to approve)` : ""}`)))
         .when(list.filter(a => a.status === "done").length > 0, el => el.child(div().text_color(t.done).child(`· ${list.filter(a => a.status === "done").length} done`)))
         .when(list.filter(a => a.status === "working").length > 0, el => el.child(div().text_color(t.working).child(`· ${list.filter(a => a.status === "working").length} working`))))
       .child(div().flex_1())
