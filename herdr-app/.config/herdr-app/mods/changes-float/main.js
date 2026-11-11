@@ -1293,7 +1293,7 @@ export default class Changes extends View {
     const list = this.inboxList();
     const col = { pass: t.done, fail: t.blocked, wait: t.working, none: t.dim };
     const mark = { pass: "✓", fail: "✗", wait: "…", none: "" };
-    const heads = { all: ["All open PRs", t.muted], review: ["Review requested", t.blocked], waiting: ["Reviewed · waiting on the author", t.muted], mine: ["Your PRs", t.muted], covered: ["Already approved by someone else", t.dim] };
+    const heads = { all: ["All open PRs", t.muted], review: ["To review", t.blocked], waiting: ["Waiting on author", t.muted], mine: ["Your PRs", t.muted], covered: ["Approved by others", t.dim] };
     const label = (d) => {
       if (newTalk(d)) return ["new comments", t.working];
       if (d.sec === "waiting") return d.flag === "re-review" ? ["new commits", t.blocked] : d.flag === "replied" ? ["replied", t.working] : d.my === "APPROVED" ? ["you approved", t.done] : d.my === "CHANGES_REQUESTED" ? ["you requested changes", t.muted] : ["you commented", t.dim];
