@@ -1060,9 +1060,17 @@ export default class Changes extends View {
     });
   }
 
+  // A review or comment for this PR already waits in the tm-serve broker queue (status-git publishes shared("broker")): posting it
+  // here too would double-post, so Approve, Comment and Request changes stay off until tm answers it in gb-ok.
+  queuedFor(det) {
+    const name = det.top.split("/").pop().toLowerCase(), full = det.top.startsWith("gh:") ? det.top.slice(3).toLowerCase() : "";
+    return (shared("broker")?.queue ?? []).find((q) => (q.kind === "review" || q.kind === "comment") && String(q.pr) === String(det.n) && (full ? (q.repo ?? "").toLowerCase() === full : (q.repo ?? "").split("/").pop().toLowerCase() === name));
+  }
+
   askAction(kind, cx) {
     const det = this.detail;
     if (!det || det.busy || !det.data) return;
+    if (kind !== "merge" && this.queuedFor(det)) return;
     det.confirm = { kind, method: "merge" }; det.note = null;
     if (kind === "comment" || kind === "request" || kind === "approve") {
       det.prefill = det.local || proposedText(det.draft); this.dInput.set_value(det.prefill); this.dInput.focus();
@@ -1142,6 +1150,7 @@ export default class Changes extends View {
   detailBody(t) {
     const det = this.detail, d = det.data;
     const btn = (id, text, fn, color, hint) => div().id(id).px(10).py(4).rounded(6).border_1().border_color(color ?? t.border).cursor_pointer().text_size(12).text_color(color ?? t.foreground).hover((s) => s.bg(t.hover)).on_click((_e, cx) => fn(cx)).child(hint ? `${text} (${hint})` : text);
+    const queued = this.queuedFor(det);
     const stateColor = d?.state === "MERGED" ? t.accent : d?.state === "CLOSED" ? t.blocked : t.done;
     const rv = { APPROVED: ["approved", t.done], CHANGES_REQUESTED: ["changes requested", t.blocked], REVIEW_REQUIRED: ["review needed", t.muted] }[d?.reviewDecision] ?? null;
     const section = (title, color) => div().px(2).pt(6).text_size(12).font_semibold().text_color(color ?? t.muted).child(title.toUpperCase());
@@ -1150,9 +1159,10 @@ export default class Changes extends View {
       .child(div().flex_none().px(7).h(20).flex().items_center().rounded(5).border_1().border_color(t.border).text_size(11).text_color(t.accent).child(det.top.startsWith("gh:") ? det.top.slice(3) : det.top.split("/").pop()))
       .child(div().flex_1().min_w(0).truncate().font_semibold().child(`#${det.n}  ${det.title}`))
       .child(btn("pd-view", det.view === "diff" ? "Overview" : "Diff", (cx) => { det.view = det.view === "diff" ? "overview" : "diff"; if (det.view === "diff") this.loadDiff(cx); cx.notify(); }, null, "D"))
-      .child(btn("pd-approve", "Approve", (cx) => this.askAction("approve", cx), t.done, "A"))
-      .child(btn("pd-comment", "Comment", (cx) => this.askAction("comment", cx), null, "C"))
-      .child(btn("pd-request", "Request changes", (cx) => this.askAction("request", cx), t.blocked, "X"))
+      .when(Boolean(queued), (e) => e.child(div().flex_none().px(7).h(20).flex().items_center().rounded(5).border_1().border_color(t.border).text_size(11).text_color(t.blocked).child(`queued in broker (${queued.id})`)))
+      .when(!queued, (e) => e.child(btn("pd-approve", "Approve", (cx) => this.askAction("approve", cx), t.done, "A"))
+        .child(btn("pd-comment", "Comment", (cx) => this.askAction("comment", cx), null, "C"))
+        .child(btn("pd-request", "Request changes", (cx) => this.askAction("request", cx), t.blocked, "X")))
       .child(btn("pd-merge", "Merge", (cx) => this.askAction("merge", cx), t.accent, "M"))
       .child(btn("pd-web", "Browser", () => openUrl(det.url), null, "B"));
     const c = det.confirm;
