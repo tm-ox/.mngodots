@@ -88,6 +88,15 @@ function sections(inb) {
   return { fix, toReview, rerev, talk, ready, covered };
 }
 
+// dev-server and throwaway-mongo on tm-serve, from status-git's shared("broker") probe (plain status lines). Ids are
+// validated here too: they end up in a command line.
+const serveRows = (bk) => {
+  const out = [];
+  for (const l of bk?.dev ?? []) { const m = /^(\d{4,5}) (running|dead)(?:: (.*))?$/.exec(l); if (m) out.push({ type: "dev", id: m[1], up: m[2] === "running", text: m[3] ?? "" }); }
+  for (const l of bk?.mongo ?? []) { const m = /^([A-Za-z0-9][A-Za-z0-9._-]*) (running|dead)(?: (.*))?$/.exec(l); if (m) out.push({ type: "mongo", id: m[1], up: m[2] === "running", text: m[3] ?? "" }); }
+  return out;
+};
+
 export default class InboxPanel extends View {
   init(_props, cx) {
     this.cxRef = cx;
@@ -109,6 +118,9 @@ export default class InboxPanel extends View {
     cx.timer.every(3000, (cx) => {
       const b = shared("inbox"), er = shared("inbox-error") || "";
       if ((b && b.at !== this.inb?.at) || er !== this.err) { if (b) this.inb = b; this.err = er; }
+      const ask = shared("inbox-open-dev") || 0; // the status-bar servers chip: unfold Dev servers
+      if (ask > (this.devAsk ?? Date.now())) { this.folded.delete("dev"); this.devOpenAt = Date.now(); saveFolded(this.folded); }
+      this.devAsk = Math.max(ask, this.devAsk ?? 0);
       if (!this.handle.is_focused() && AUTO_FOLD.some((k) => !this.folded.has(k)) && Date.now() - this.devOpenAt > 60000) this.collapseAuto();
       cx.notify(); // also keeps the relative ages and "new" marks current
     });
@@ -242,6 +254,23 @@ export default class InboxPanel extends View {
     });
   }
 
+  // tm-serve rows: stop needs a second press within 3 s; the tunnel is a visible tab that tm closes. Nothing here starts a server.
+  stopServe(x, cx) {
+    const mark = "srv" + x.type + x.id;
+    if (this.armed !== mark) { this.armed = mark; cx.notify(); cx.timer.after(3000, (cx) => { if (this.armed === mark) { this.armed = null; cx.notify(); } }); return; }
+    this.armed = null; cx.notify();
+    if (!(x.type === "dev" ? /^\d{4,5}$/ : /^[A-Za-z0-9][A-Za-z0-9._-]*$/).test(x.id)) return;
+    exec("sh", ["-c", '"$HOME/.local/bin/$1" stop "$2"', "sh", x.type === "dev" ? "dev-server" : "throwaway-mongo", x.id], { on: REV_HOST, timeout: 20000 })
+      .then((r) => { if (r.code !== 0) notify({ title: "Not stopped", body: (r.stderr || r.stdout).trim().split("\n")[0], level: "error" }); setShared("broker-ask", Date.now()); })
+      .catch((e) => notify({ title: "Not stopped", body: String(e.message ?? e), level: "error" }));
+  }
+
+  tunnel(x) {
+    if (x.type !== "dev" || !x.up || !/^\d{4,5}$/.test(x.id) || Number(x.id) < 1024 || Number(x.id) > 65535) return notify({ title: "Tunnel is for a running dev server", level: "info" });
+    run("terminal.open", { argv: ["ssh", "-N", "-L", `${x.id}:127.0.0.1:${x.id}`, REV_HOST], place: "tab", name: "tunnel-" + x.id });
+    notify({ title: `Tunnel :${x.id} opened in a tab`, body: `Browse http://localhost:${x.id}. Close that tab to end it.`, level: "info" });
+  }
+
   // Flat list of what is on screen: one header per thing (so far: Pull requests), then its rows unless folded.
   items() {
     const out = [];
@@ -264,9 +293,9 @@ export default class InboxPanel extends View {
     if (this.jobs?.length) push("sched", "Schedules", this.jobs.length, [["on", this.jobs.filter((j) => j.enabled).length]].filter(([, c]) => c), this.jobs.map((j) => ({ id: "j:" + j.name, key: "sched", kind: "job", j })));
     if (this.devs) {
       const bms = (Array.isArray(shared(BM_KEY)) ? shared(BM_KEY) : []).filter((b) => !this.devs.some((l) => l.bm === b.id));
-      const total = this.devs.length + bms.length;
-      push("dev", "Dev servers", total, [["running", this.devs.length], ["stopped", bms.length]].filter(([, c]) => c),
-        [...bms.map((b) => ({ id: "b:" + b.id, key: "dev", kind: "bm", b })), ...this.devs.map((l) => ({ id: "d:" + l.pid + ":" + l.port, key: "dev", kind: "dev", l }))]);
+      const srv = serveRows(bk), up = this.devs.length + srv.filter((x) => x.up).length;
+      push("dev", "Dev servers", this.devs.length + bms.length + srv.length, [["running", up], ["stopped", bms.length + srv.filter((x) => !x.up).length]].filter(([, c]) => c),
+        [...bms.map((b) => ({ id: "b:" + b.id, key: "dev", kind: "bm", b })), ...this.devs.map((l) => ({ id: "d:" + l.pid + ":" + l.port, key: "dev", kind: "dev", l })), ...srv.map((x) => ({ id: "v:" + x.type + x.id, key: "dev", kind: "srv", x }))]);
     }
     return out;
   }
@@ -315,6 +344,9 @@ export default class InboxPanel extends View {
     else if (k === "x" && cur?.kind === "task") { this.complete(cur.k, cx); return cx.stop_propagation(); }
     else if ((k === "s" || k === "r") && cur?.kind === "bm") { this.startBm(cur.b, cx); }
     else if ((k === "s" || k === "r") && cur?.kind === "dev") { this.act(cur.l, k === "s" ? "stop" : "restart", cx); }
+    else if (k === "s" && cur?.kind === "srv") { this.stopServe(cur.x, cx); }
+    else if (k === "t" && cur?.kind === "srv") { this.tunnel(cur.x); }
+    else if (k === "e" && cur?.key === "dev") { run("mod.open", { name: "devservers" }); }
     else if (k === "a") this.foldAll(cx);
     else if (k === "r") { setShared("inbox-ask", Date.now()); setShared("broker-ask", Date.now()); }
     else if (k === "o") { setShared("git-tab", "inbox"); run("mod.open", { name: "changes-float" }); }
@@ -328,6 +360,7 @@ export default class InboxPanel extends View {
     if (it.kind === "pr") this.open(it.d);
     else if (it.kind === "appr") this.openGbOk();
     else if (it.kind === "health") setShared("broker-ask", Date.now());
+    else if (it.kind === "srv") this.tunnel(it.x);
     else if (it.kind === "dev") exec("xdg-open", [`http://localhost:${it.l.port}`]).catch(() => {});
     else if (it.kind === "job") { run("layout.select", { stack: "panel-body", child: "sched" }); this.after150("sched-tm.focus"); }
     else if (it.kind === "bm") this.startBm(it.b, this.cxRef);
@@ -399,6 +432,21 @@ export default class InboxPanel extends View {
           .when(Boolean(ask), (el) => el.child(div().flex_1().text_size(11).text_color(t.blocked).child(ask)))
           .child(div().flex_none().text_size(11).text_color(t.dim).child(dage(l.up))));
     };
+    const vrow = (it) => {
+      const x = it.x, on = focused && this.sel === it.id, mark = "srv" + x.type + x.id, ask = this.armed === mark ? "press s again to stop" : "";
+      const btn = (key, glyph, fn) => div().id(key + it.id).flex_none().w(20).h(20).flex().items_center().justify_center().rounded(5).cursor_pointer().text_size(12).text_color(t.dim).hover((y) => y.bg(t.hover).text_color(t.foreground))
+        .on_click((_e, cx) => { cx.stop_propagation(); fn(cx); }).child(glyph);
+      return v_flex().id(it.id).flex_none().px(10).py(4).gap(1).rounded(7).cursor_pointer().bg(on ? t.selected : t.background).hover((y) => y.bg(on ? t.selected : t.hover))
+        .on_click(() => this.activate(it))
+        .child(h_flex().gap(4).items_center().min_w(0)
+          .child(div().w(7).h(7).flex_none().rounded(4).bg(x.up ? t.done : t.dim))
+          .child(div().flex_1().min_w(0).truncate().text_color(on ? t.foreground : t.muted).child(x.type === "dev" ? (x.up ? x.text || "dev server" : "dev server (dead)") : `mongo ${x.id}`))
+          .when(x.type === "dev" && x.up, (el) => el.child(btn("tn", "⇄", () => this.tunnel(x))))
+          .child(btn("ss", "✕", (cx) => this.stopServe(x, cx))))
+        .child(h_flex().gap(6).items_center().min_w(0)
+          .child(div().flex_none().text_size(11).text_color(t.accent).child(x.type === "dev" ? `:${x.id}` : x.id))
+          .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(ask ? t.blocked : t.dim).child(ask || `tm-serve${x.type === "mongo" && x.up ? " · " + x.text : ""}`)));
+    };
     const jrow = (it) => {
       const j = it.j, on = focused && this.sel === it.id, nx = j.enabled && j.next?.[0], bad = j.last && j.last.code !== 0;
       return h_flex().id(it.id).flex_none().px(10).py(4).gap(7).items_center().rounded(7).cursor_pointer().bg(on ? t.selected : t.background).hover((x) => x.bg(on ? t.selected : t.hover))
@@ -444,12 +492,12 @@ export default class InboxPanel extends View {
     };
     const items = this.items();
     // Explicit height (a scroll container will not shrink to its content): headers 31px, schedule rows 29px, server rows 47px, capped.
-    const pinH = Math.min(300, 10 + items.filter((it) => PINNED.includes(it.key)).reduce((a, it) => a + (it.head ? 31 : it.kind === "dev" || it.kind === "bm" ? 47 : 29), 0));
+    const pinH = Math.min(300, 10 + items.filter((it) => PINNED.includes(it.key)).reduce((a, it) => a + (it.head ? 31 : it.kind === "dev" || it.kind === "bm" || it.kind === "srv" ? 47 : 29), 0));
     const addRow = h_flex().id("inbox-add-row").flex_none().px(6).py(4).gap(6).items_center().rounded(7).border_1().border_color(t.accent).bg(t.raised)
       .child(div().id("inbox-add-cal").flex_none().h(18).px(6).flex().items_center().rounded(5).border_1().border_color(t.border).cursor_pointer().text_size(10.5).text_color(t.accent)
         .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click((_e, cx) => this.cycleCal(cx)).child(this.cal.toUpperCase()))
       .child(Input.new(this.addState).flex_1().min_w(0).h(24).text_size(12.5).text_color(t.foreground));
-    const draw = (it) => (it.head ? head(it) : it.kind === "add" ? addRow : it.kind === "appr" ? arow(it) : it.kind === "health" ? hrow(it) : it.kind === "task" ? trow(it) : it.kind === "dev" ? drow(it) : it.kind === "bm" ? brow(it) : it.kind === "job" ? jrow(it) : it.kind === "more" ? more(it) : row(it));
+    const draw = (it) => (it.head ? head(it) : it.kind === "add" ? addRow : it.kind === "appr" ? arow(it) : it.kind === "health" ? hrow(it) : it.kind === "task" ? trow(it) : it.kind === "dev" ? drow(it) : it.kind === "srv" ? vrow(it) : it.kind === "bm" ? brow(it) : it.kind === "job" ? jrow(it) : it.kind === "more" ? more(it) : row(it));
     return v_flex().id("inbox-panel").track_focus(this.handle).on_key_down((e, cx) => this.key(e, cx)).size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(focused ? t.accent : t.border).text_color(t.foreground).text_size(13)
       .child(h_flex().h(30).flex_none().px(14).gap(8).items_center().border_b(1).border_color(t.border)
         .child(div().id("inbox-title").font_semibold().cursor_pointer().on_click(() => { setShared("git-tab", "inbox"); run("mod.open", { name: "changes-float" }); }).child("Inbox"))
@@ -463,6 +511,6 @@ export default class InboxPanel extends View {
         .when(Boolean(s) && s.covered > 0, (el) => el.child(div().px(10).pt(10).text_size(11).text_color(t.dim).child(`${s.covered} more already approved by others`)))
         .when(Boolean(this.err && s), (el) => el.child(div().px(10).pt(8).text_size(11).text_color(t.blocked).child(this.err))))
       .when(items.some((it) => PINNED.includes(it.key)), (el) => el.child(v_flex().id("inbox-pinned").flex_none().h(pinH).overflow_y_scrollbar().px(8).pb(6).pt(2).gap(1).border_t(1).border_color(t.border).children(items.filter((it) => PINNED.includes(it.key)).map(draw))))
-      .when(focused, (el) => el.child(div().flex_none().px(14).py(6).border_t(1).border_color(t.border).truncate().text_size(11).text_color(t.dim).child("j k move (wraps) · g G first / last · ← → fold · a fold all · Enter open (approval: gb-ok · schedule: manage) · n new task · x tick · d delete task · s stop · r restart / start (server) or refresh · Esc leave")));
+      .when(focused, (el) => el.child(div().flex_none().px(14).py(6).border_t(1).border_color(t.border).truncate().text_size(11).text_color(t.dim).child("j k move (wraps) · g G first / last · ← → fold · a fold all · Enter open (approval: gb-ok · schedule: manage) · n new task · x tick · d delete task · s stop · t tunnel (tm-serve) · e servers · r restart / start (server) or refresh · Esc leave")));
   }
 }

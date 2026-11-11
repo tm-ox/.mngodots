@@ -329,11 +329,9 @@ export default class WorkspaceStatus extends View {
         }))
         .when(this.pr.length > 3, e => e.child(div().child(`+${this.pr.length - 3}`)))))
       .when(fresh.length > 0, el => el.child(div().id("merged").cursor_pointer().text_color(t.done).on_click(() => { this.showGit("merged"); }).child(`✓ ${fresh.length} merged: ${fresh.slice(-2).map(m => `#${m.n}`).join(" ")}`)))
-      .when(this.serving.length > 0, el => el.child(h_flex().gap(8).items_center().text_color(t.working)
-        .children(this.serving.slice(0, 4).map(v => div().child(`▲ :${v.port} ${v.cwd.split("/").pop()}`)))
-        .when(this.serving.length > 4, e => e.child(div().child(`+${this.serving.length - 4}`)))))
-      .when(this.devUp.length + this.mongoUp.length > 0, el => el.child(div().id("serve-chip").cursor_pointer().text_color(t.working).on_click(() => run("mod.open", { name: "devservers" }))
-        .child(`tm-serve ${[...this.devUp.map((l) => "▲ :" + l.split(" ")[0]), ...(this.mongoUp.length ? [`mongo ${this.mongoUp.length}`] : [])].join(" · ")}`)))
+      .when(this.devUp.length + this.mongoUp.length + this.serving.length > 0, el => el.child(div().id("serve-chip").cursor_pointer().text_color(t.working)
+        .on_click(() => { setShared("inbox-open-dev", Date.now()); run("layout.select", { stack: "panel-body", child: "inbox" }); run("layout.show", { id: "panel" }); })
+        .child(`▲ servers ${this.devUp.length + this.mongoUp.length + this.serving.length}`)))
       .child(div().flex_1())
       .child(div().id("palette").text_color(t.dim).on_click(() => run("app.palette")).child(`${window()?.platform === "macos" ? "⌘" : "Ctrl"} Shift P  commands`));
   }
