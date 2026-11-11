@@ -507,7 +507,7 @@ export default class InboxPanel extends View {
     };
     const items = this.items();
     // Explicit height (a scroll container will not shrink to its content): headers 31px, schedule rows 29px, server rows 47px, capped.
-    const pinH = Math.min(300, 10 + items.filter((it) => PINNED.includes(it.key)).reduce((a, it) => a + (it.head ? 31 : it.kind === "dev" || it.kind === "bm" || it.kind === "srv" ? 47 : 29), 0));
+    const pinH = Math.min(520, 10 + items.filter((it) => PINNED.includes(it.key)).reduce((a, it) => a + (it.head ? 31 : it.kind === "dev" || it.kind === "bm" || it.kind === "srv" ? 47 : 29), 0));
     const addRow = h_flex().id("inbox-add-row").flex_none().px(6).py(4).gap(6).items_center().rounded(7).border_1().border_color(t.accent).bg(t.raised)
       .child(div().id("inbox-add-cal").flex_none().h(18).px(6).flex().items_center().rounded(5).border_1().border_color(t.border).cursor_pointer().text_size(11).text_color(t.accent)
         .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click((_e, cx) => this.cycleCal(cx)).child(this.cal.toUpperCase()))
