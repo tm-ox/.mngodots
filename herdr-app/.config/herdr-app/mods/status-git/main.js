@@ -280,7 +280,7 @@ export default class WorkspaceStatus extends View {
         this.inboxSeen = true;
         setShared("inbox", inbox); setShared("inbox-error", "");
         const unc = inbox.review.filter((d) => !d.draft && !d.covered).sort((x, y) => Date.parse(x.createdAt) - Date.parse(y.createdAt));
-        const counts = { review: unc.length, oldest: unc[0]?.createdAt ?? "", rerev: inbox.waiting.filter((d) => d.flag).length, ready: inbox.mine.filter(readyOf).length, talk: inbox.waiting.filter((d) => !d.draft && d.act > ((shared("pr-seen") || {})[d.url] || 0)).length, fix: inbox.mine.filter((d) => !d.draft && (d.decision === "CHANGES_REQUESTED" || d.ci === "fail")).length };
+        const counts = { review: unc.length, fix: inbox.mine.filter((d) => !d.draft && d.decision === "CHANGES_REQUESTED").length, oldest: unc[0]?.createdAt ?? "", rerev: inbox.waiting.filter((d) => d.flag).length, ready: inbox.mine.filter(readyOf).length, talk: inbox.waiting.filter((d) => !d.draft && d.act > ((shared("pr-seen") || {})[d.url] || 0)).length, fix: inbox.mine.filter((d) => !d.draft && (d.decision === "CHANGES_REQUESTED" || d.ci === "fail")).length };
         if (JSON.stringify(counts) !== JSON.stringify(shared("inbox-counts"))) setShared("inbox-counts", counts); // header chips (tabs-tm)
         const reviews = inbox.review.filter((d) => !d.draft && !d.covered).map((d) => ({ n: d.n, repo: d.repo })), rerev = inbox.waiting.filter((d) => d.flag).length, ready = inbox.mine.filter(readyOf).length;
         if (JSON.stringify(reviews) !== JSON.stringify(this.reviews) || rerev !== this.rerev || ready !== this.ready) { this.reviews = reviews; this.rerev = rerev; this.ready = ready; cx.notify(); }

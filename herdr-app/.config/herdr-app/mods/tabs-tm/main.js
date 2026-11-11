@@ -117,6 +117,7 @@ export default class Tabs extends View {
       ic.rerev > 0 && chip("rerev", ic.rerev, "re-review", t.blocked),
       ic.talk > 0 && chip("talk", ic.talk, "new comments", t.working),
       SHOW_READY && ic.ready > 0 && chip("ready", ic.ready, "ready", t.done),
+      ic.fix > 0 && chip("fix", ic.fix, "to fix", t.blocked),
     ].filter(Boolean);
     const chipRow = h_flex().id("inbox-chips").flex_none().gap(6).pl(6).pr(4).items_center().children(chips);
     return h_flex().size_full().min_w(0).px(10).pl(lightsPadding).gap(3).items_center().bg(t.chrome).border_b(1).border_color(t.border)

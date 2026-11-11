@@ -87,7 +87,7 @@ function sections(inb) {
   const take = new Set(), pick = (list, f) => list.filter((d) => !take.has(d.url) && f(d)).map((d) => (take.add(d.url), d));
   const real = (l) => (l ?? []).filter((d) => !d.draft);
   const mine = real(inb.mine), waiting = real(inb.waiting), review = real(inb.review);
-  const fix = pick(mine, (d) => d.decision === "CHANGES_REQUESTED" || d.ci === "fail");
+  const fix = pick(mine, (d) => d.decision === "CHANGES_REQUESTED"); // only when a reviewer asked for changes
   const toReview = pick(review, (d) => !d.covered).sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
   const rerev = pick(waiting, (d) => Boolean(d.flag));
   const talk = pick(waiting, (d) => d.act > seenAt(d)); // comments on PRs tm reviewed; comments on tm's own PRs are waiting on others
@@ -400,7 +400,7 @@ export default class InboxPanel extends View {
 
   render(cx) {
     const t = theme(), inb = this.inb, s = inb ? sections(inb) : null, focused = this.handle.is_focused();
-    const total = s ? s.toReview.length + s.rerev.length + s.talk.length + s.ready.length : 0;
+    const total = s ? s.fix.length + s.toReview.length + s.rerev.length + s.talk.length + s.ready.length : 0;
     const lateN = (this.tasks ?? []).filter((k) => k.due && k.due.slice(0, 10) <= ymd(new Date())).length;
     const iconBtn = (id, text, onClick) => div().id(id).w(24).h(24).flex().items_center().justify_center().flex_none().rounded(6).cursor_pointer().text_size(13).text_color(t.muted).hover((x) => x.bg(t.hover)).on_click(onClick).child(text);
     const chip = (text, color) => div().flex_none().h(16).px(6).flex().items_center().rounded(5).border_1().border_color(t.border).text_size(11).text_color(color).child(text);
@@ -511,7 +511,7 @@ export default class InboxPanel extends View {
     };
     const items = this.items();
     // Explicit height (a scroll container will not shrink to its content): headers 31px, schedule rows 29px, server rows 47px, capped.
-    const pinH = Math.min(520, 10 + items.filter((it) => PINNED.includes(it.key)).reduce((a, it) => a + (it.head ? 31 : it.kind === "dev" || it.kind === "bm" || it.kind === "srv" ? 47 : 29), 0));
+    const pinWant = 26 + items.filter((it) => PINNED.includes(it.key)).reduce((a, it) => a + (it.head ? 33 : it.kind === "dev" || it.kind === "bm" || it.kind === "srv" ? 50 : 31), 0), pinH = Math.min(520, pinWant), pinCapped = pinWant > 520;
     const addRow = h_flex().id("inbox-add-row").flex_none().px(6).py(4).gap(6).items_center().rounded(7).border_1().border_color(t.accent).bg(t.raised)
       .child(div().id("inbox-add-cal").flex_none().h(18).px(6).flex().items_center().rounded(5).border_1().border_color(t.border).cursor_pointer().text_size(11).text_color(t.accent)
         .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click((_e, cx) => this.cycleCal(cx)).child(this.cal.toUpperCase()))
@@ -529,7 +529,7 @@ export default class InboxPanel extends View {
         .when(Boolean(s) && items.length === 0, (el) => el.child(div().p(8).text_size(12).text_color(t.dim).child("Nothing needs you right now.")))
         .when(Boolean(s) && s.covered > 0, (el) => el.child(div().px(10).pt(10).text_size(11).text_color(t.dim).child(`${s.covered} more already approved by others`)))
         .when(Boolean(this.err && s), (el) => el.child(div().px(10).pt(8).text_size(11).text_color(t.blocked).child(this.err))))
-      .when(items.some((it) => PINNED.includes(it.key)), (el) => el.child(v_flex().id("inbox-pinned").flex_none().h(pinH).overflow_y_scrollbar().px(8).pb(6).pt(2).gap(1).border_t(1).border_color(t.border).children(items.filter((it) => PINNED.includes(it.key)).map(draw))))
+      .when(items.some((it) => PINNED.includes(it.key)), (el) => el.child(v_flex().id("inbox-pinned").flex_none().h(pinH).when(pinCapped, (e) => e.overflow_y_scrollbar()).when(!pinCapped, (e) => e.overflow_hidden()).px(8).pb(6).pt(2).gap(1).border_t(1).border_color(t.border).children(items.filter((it) => PINNED.includes(it.key)).map(draw))))
       .when(focused, (el) => el.child(div().flex_none().px(14).py(6).border_t(1).border_color(t.border).truncate().text_size(11).text_color(t.dim).child("j k move (wraps) · g G first / last · ← → fold · a fold all · Enter open (approval: gb-ok · schedule: manage) · n new task · x tick · d delete task · s stop · t tunnel (tm-serve) · e servers · r restart / start (server) or refresh · Esc leave")));
   }
 }
