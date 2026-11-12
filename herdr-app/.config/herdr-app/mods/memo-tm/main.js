@@ -6,8 +6,8 @@
 // In a text field: Tab / Shift Tab next field, Ctrl H back to the list. Esc closes the whole mod (the host takes it), so it is never the way back.
 // Attachments (images shared from jtx Board): a paperclip in the list, chips in the reader and editor; F opens the first one (chips open their own) in the default app.
 // Text edits save by themselves 0.7 s after you stop typing; chips save at once. A save checks the server's etag.
-import { View, div } from "gpui-kit";
-import { v_flex, h_flex, InputState, Input, TextareaState, Textarea, CalendarState } from "gpui-base";
+import { View, div, list } from "gpui-kit";
+import { v_flex, h_flex, InputState, Input, TextareaState, Textarea, CalendarState, TextView, Scrollbar } from "gpui-base";
 import { exec, theme, props, closeOverlay, home, shared, setShared } from "herdr";
 
 // Ctrl+Shift+V (what voice-input.sh sends to herdr-app, which it treats as a terminal): a text box only knows Ctrl+V, so paste the clipboard in here.
@@ -68,7 +68,8 @@ const HELP = [
     ["1 – 5", "Tabs: All, Notes, Tasks, Bookmarks, Org (OpenBot's own tasks and notes, edited in place). Org items also appear in All, Notes and Tasks (ORG label). Bookmarks are hidden from All."],
   ]],
   ["Reader", [
-    ["J K · ↑ ↓", "Scroll a line."],
+    ["m", "Toggle rendered markdown / raw text. Rendered scrolls by wheel or scrollbar only; raw has the scroll keys."],
+    ["J K · ↑ ↓", "Scroll a line (raw view)."],
     ["Space · Ctrl F", "Scroll a page down (Ctrl B or Page Up: up)."],
     ["Ctrl D · Ctrl U", "Scroll half a page down or up."],
     ["g · G", "Jump to the top or the end."],
@@ -107,7 +108,7 @@ export default class Memo extends View {
     this.curId = null; this.cur = null; this.state = ""; this.note = null; this.askDel = null;
     this.focused = new Set(); this.populating = false; this.seq = 0; this.saving = false; this.again = false;
     this.handle = cx.focus_handle();
-    this.calendar = CalendarState.new(); this.calOpen = false; this.pickerFocus = false; this.pcur = null; this.editing = false; this.rightFocus = false; this.pvOff = 0; this.flash = ""; this.helpOpen = false;
+    this.calendar = CalendarState.new(); this.calOpen = false; this.pickerFocus = false; this.pcur = null; this.editing = false; this.rightFocus = false; this.pvOff = 0; this.mdRaw = false; this.flash = ""; this.helpOpen = false;
 
     this.search = InputState.new({ placeholder: "Search…" });
     this.title = InputState.new({ placeholder: "Title" });
@@ -437,6 +438,7 @@ export default class Memo extends View {
       else if (k === "u") this.copyText(this.urls()[0], "link", cx);
       else if (k === "o") this.openLink(this.urls()[0], cx);
       else if (k === "f" && !ctrl) this.openAttachment(0, cx);
+      else if (k === "m" && !ctrl) this.mdRaw = !this.mdRaw;
       else if (k === "j" || k === "down") this.scrollView(1);
       else if (k === "k" || k === "up") this.scrollView(-1);
       else if (ctrl && k === "d") this.scrollView(15);
@@ -456,6 +458,7 @@ export default class Memo extends View {
     if (k === "down" || k === "j") this.move(1, cx);
     else if (k === "up" || k === "k") this.move(-1, cx);
     else if (k === "f" && !ctrl && this.cur) this.openAttachment(0, cx);
+    else if (k === "m" && !ctrl && this.cur) this.mdRaw = !this.mdRaw;
     else if ((k === "enter" || k === "e") && this.cur) this.enterEdit(cx);
     else if (k === "b") this.flip(cx);
     else if (k === "o") this.openLink(this.urls()[0], cx);
@@ -569,12 +572,17 @@ export default class Memo extends View {
     const prioName = { 1: "High", 5: "Medium", 9: "Low" }[c?.prio];
     const statusName = (STATUSES.find(([, v]) => v === c?.status) ?? [])[0];
     const meta = (text) => div().h(20).flex().items_center().flex_none().text_size(11).text_color(t.dim).child(text);
+    const mdText = ((c?.url && !(c?.body ?? "").includes(c.url) ? c.url + "\n\n" : "") + (c?.body ?? "")).replace(/\n+$/, "");
+    const RAW = !c ? null : div().id("memo-view").flex_1().min_h(0).overflow_hidden()
+        .on_scroll_wheel((e, cx) => { const dy = e.delta_lines?.y ?? e.delta.y; if (dy) { this.scrollView(dy < 0 ? 3 : -3); cx.notify(); } })
+        .child(v_flex().w_full().children(lines.slice(off, off + 250).map((l, i) => { const u = (l.match(/https?:\/\/[^\s<>"')\]]+/) ?? [])[0]?.replace(/[.,;:!?]+$/, ""); const row = div().w_full().flex_none().min_h(l.trim() ? 18 : 10).text_size(13).text_color(u ? t.accent : this.rightFocus ? t.foreground : t.muted).child(l); return u ? row.id(`lnk-${off + i}`).cursor_pointer().on_click((ev, cx) => { this.openLink(u, cx); cx.notify(); }) : row; })));
     const viewPane = !c ? editPane : v_flex().flex_1().min_h(0).p(14).gap(10)
       .child(h_flex().gap(8).items_center().flex_none().h(28)
         .child(div().flex_1().min_w(0).truncate().text_size(16).font_medium().text_color(t.foreground).child(c.title))
         .child(h_flex().gap(6).flex_none()
           .child(pill("view-copy", "Copy", false, (cx) => { this.copyText((c.body ?? "").replace(/\n+$/, ""), "body", cx); cx.notify(); }))
           .when(this.urls().length > 0, (e) => e.child(pill("view-open", "Open link", false, (cx) => { this.openLink(this.urls()[0], cx); cx.notify(); })))
+          .child(pill("view-raw", this.mdRaw ? "Rendered" : "Raw", false, (cx) => { this.mdRaw = !this.mdRaw; cx.notify(); }))
           .child(pill("view-edit", "Edit", false, (cx) => this.enterEdit(cx)))))
       .child(h_flex().gap(8).items_center().flex_none().h(20).overflow_hidden()
         .child(meta(isOrg(c) ? `${c.kind === "note" ? "Note" : "Task"} · ORG (OpenBot)` : c.kind === "note" ? "Note · MEMO" : `Task · ${c.cal.toUpperCase()}`))
@@ -584,16 +592,16 @@ export default class Memo extends View {
         .when(c.kind === "task" && Boolean(statusName), (e) => e.child(meta(statusName))))
       .when(hasAtt, (e) => e.child(attRow()))
       .child(div().h(1).flex_none().bg(t.border))
-      .child(div().id("memo-view").flex_1().min_h(0).overflow_hidden()
-        .on_scroll_wheel((e, cx) => { const dy = e.delta_lines?.y ?? e.delta.y; if (dy) { this.scrollView(dy < 0 ? 3 : -3); cx.notify(); } })
-        .child(v_flex().w_full().children(lines.slice(off, off + 250).map((l, i) => { const u = (l.match(/https?:\/\/[^\s<>"')\]]+/) ?? [])[0]?.replace(/[.,;:!?]+$/, ""); const row = div().w_full().flex_none().min_h(l.trim() ? 18 : 10).text_size(13).text_color(u ? t.accent : this.rightFocus ? t.foreground : t.muted).child(l); return u ? row.id(`lnk-${off + i}`).cursor_pointer().on_click((ev, cx) => { this.openLink(u, cx); cx.notify(); }) : row; }))))
-      .when(lines.length > 1 || Boolean(this.flash), (e) => e.child(div().flex_none().text_size(11).text_color(this.flash ? t.accent : t.dim).child(this.flash || `line ${off + 1} of ${lines.length}`)));
+      .child(this.mdRaw ? RAW : div().flex_1().min_h(0).relative()
+        .child(list("memo-mdl-" + c.id, 1, () => "md", () => div().w_full().px(2).py(2).text_color(t.foreground).child(TextView.markdown("memo-md-" + c.id, mdText).text_color(t.foreground))).size_full())
+        .child(Scrollbar.vertical("memo-mdl-" + c.id).absolute().inset_0()))
+      .when((this.mdRaw && lines.length > 1) || Boolean(this.flash), (e) => e.child(div().flex_none().text_size(11).text_color(this.flash ? t.accent : t.dim).child(this.flash || `line ${off + 1} of ${lines.length}`)));
     const detail = this.editing ? editPane : viewPane;
 
     const hint = this.helpOpen ? ""
       : this.pickerFocus ? "H J K L day · [ ] hour · , . minute · Enter done · C cancel · 0 no time · x clear"
       : this.typing ? "Tab next field · Ctrl H back · Ctrl L picker"
-      : this.rightFocus && !this.editing ? "O open · U copy link · F attachment · x done"
+      : this.rightFocus && !this.editing ? "O open · U copy link · F attachment · M raw/rendered · x done"
       : "n note · T Y W task · B link · O open · x done" + (this.tab === "all" || this.tab === "task" ? ` · A ${this.showDone ? "hide" : "show"} done` : "");
 
     return v_flex().id("memo").track_focus(this.handle).on_key_down((e, cx) => this.key(e, cx))
@@ -611,7 +619,7 @@ export default class Memo extends View {
             h_flex().gap(10).items_start().child(div().w(150).flex_none().flex().flex_wrap().gap(4).children(keys.split(" · ").map((kk) => keyChip(kk, t))))
               .child(div().flex_1().min_w(0).text_size(12).text_color(t.muted).child(text))))))))))
       .when(!this.helpOpen, (e) => e.child(h_flex().flex_1().min_h(0).items_start()
-        .child(v_flex().w(430).h_full().flex_none().min_h(0).border_r(1).border_color(t.border).p(14).gap(10)
+        .child(v_flex().w(430).h_full().flex_none().min_h(0).border_r(this.rightFocus || this.editing ? 2 : 1).border_color(this.rightFocus || this.editing ? t.accent : t.border).p(14).gap(10)
           .child(Input.new(this.search).h(32).px(10).rounded(9).border_1().border_color(this.focused.has("search") ? t.accent : t.border).bg(t.raised).text_size(12.8).text_color(t.foreground))
           .when(this.tab === "bookmark" && bcats.length > 0, (e) => e.child(h_flex().gap(6).items_center().flex_wrap().flex_none().max_h(76).overflow_y_scrollbar()
             .children(bcats.map((cat) => pill(`bf-${cat}`, `${cat} ${catCount[cat] ?? 0}`, this.catFilter.has(cat), (cx) => { this.catFilter.has(cat) ? this.catFilter.delete(cat) : this.catFilter.add(cat); this.keepSelection(cx); cx.notify(); })))
