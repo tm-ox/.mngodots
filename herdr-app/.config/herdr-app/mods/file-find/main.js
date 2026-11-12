@@ -12,7 +12,7 @@
 
 import { View, div, list } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input, TextView, Scrollbar } from "gpui-base";
-import { hc, focused, run, exec, theme, props, closeOverlay, readTextFile, settings } from "herdr";
+import { hc, focused, run, exec, theme, props, closeOverlay, readTextFile, settings, spaces, panes } from "herdr";
 
 // Ctrl+Shift+V (what voice-input.sh sends to herdr-app, which it treats as a terminal): a text box only knows Ctrl+V, so paste the clipboard in here.
 const dictate = (e, cx, box, single = true) => {
@@ -110,7 +110,11 @@ export default class FileFind extends View {
     this.pfocus = false; // keyboard on the preview: j/k scroll
     this.raw = false;
     this.helpOpen = false;
-    this.here = focused()?.cwd ?? null;
+    // Where the focused terminal lives: a server space (or a server agent terminal) runs every command there (--on), not here.
+    const sp = spaces().find((s) => s.active), f = focused(), pn = f?.pane ? panes().find((p) => p.pane === f.pane) : null;
+    this.on = f?.pane === null ? (f.terminal?.includes("/") ? f.terminal.split("/")[0] : null) : sp?.machine ?? null;
+    this.hcx = (a) => hc(["exec", ...(this.on ? ["--on", this.on] : []), ...a]);
+    this.here = pn?.cwd || f?.cwd || sp?.folder || null;
     this.root = this.here;
     this.input = InputState.new({ placeholder: "Find…" });
     this.input.on("change", (_e, cx) => { this.q = this.input.value(); this.at = 0; this.query(cx); });
@@ -120,7 +124,7 @@ export default class FileFind extends View {
     this.handle = cx.focus_handle();
     cx.spawn(async (cx) => {
       try {
-        const r = await hc(["exec", "git", "-C", this.here ?? ".", "rev-parse", "--show-toplevel"]);
+        const r = await this.hcx(["git", "-C", this.here ?? ".", "rev-parse", "--show-toplevel"]);
         if (r.code === 0 && r.stdout.trim()) this.root = r.stdout.trim();
       } catch {}
       await this.load(cx);
@@ -141,7 +145,7 @@ export default class FileFind extends View {
     await this.fill(cx, seq); // last run's list for this folder shows at once, the fresh one replaces it
     if (seq !== this.seq) return;
     try {
-      await hc(["exec", "sh", "-c", LIST_SH, "sh", this.base() ?? ".", this.mode === "files" ? "f" : "d", list]);
+      await this.hcx(["sh", "-c", LIST_SH, "sh", this.base() ?? ".", this.mode === "files" ? "f" : "d", list]);
     } catch (e) {
       if (seq === this.seq) { this.status = "fd failed: " + String(e); cx.notify(); }
       return;
@@ -164,7 +168,7 @@ export default class FileFind extends View {
 
   async fill(cx, seq) {
     try {
-      const r = await hc(["exec", "sh", "-c", QUERY_SH, "sh", this.q, this.list]);
+      const r = await this.hcx(["sh", "-c", QUERY_SH, "sh", this.q, this.list]);
       if (seq !== this.seq) return;
       this.rows = r.stdout.split("\n").filter(Boolean);
       this.status = this.rows.length ? "" : this.listed ? "No match." : "Searching…";
@@ -196,7 +200,7 @@ export default class FileFind extends View {
       const path = this.mode === "dirs" ? dirPath : `${this.base()}/${item}`;
       try {
         if (this.mode === "files") {
-          const text = await readTextFile(path);
+          const text = await readTextFile(path, { on: this.on });
           if (text === null || text === undefined) lines = ["Cannot preview (unreadable or too large)"];
           else if (text.includes("\0")) lines = ["Binary file"];
           else {
@@ -204,7 +208,7 @@ export default class FileFind extends View {
             if (lines.length && /\.(md|markdown)$/i.test(item)) { lines.md = text.slice(0, 20000); }
           }
         } else {
-          const r = await hc(["exec", "ls", "-1Ap", "--group-directories-first", path]);
+          const r = await this.hcx(["ls", "-1Ap", "--group-directories-first", path]);
           lines = r.stdout.split("\n").filter(Boolean).slice(0, PV_LINES);
           if (lines.length) lines.dir = true; else lines = ["(empty)"];
         }
@@ -281,7 +285,7 @@ export default class FileFind extends View {
     const base = this.base();
     const place = tab ? "tab" : "right";
     const name = item.replace(/\/$/, "").split("/").pop();
-    if (this.mode === "files" && isExternal(name, alt)) openExternal((base ?? "") + "/" + item);
+    if (this.mode === "files" && !this.on && isExternal(name, alt)) openExternal((base ?? "") + "/" + item);
     else if (this.mode === "files") run("terminal.open", { argv: [...EDITOR, item], folder: base ?? undefined, place, name });
     else {
       // folder is ignored for splits (they start where the focused pane is), so cd explicitly

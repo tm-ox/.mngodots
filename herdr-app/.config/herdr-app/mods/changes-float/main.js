@@ -67,9 +67,7 @@ const HELP = [
     ["Backspace · ← · H", "One step back: close prompt, diff to overview, overview to list."],
     ["D", "Toggle diff and overview."],
     ["R", "Show or hide the agent's review notes and posted text (hidden once posted)."],
-    ["A", "Approve (Enter confirms)."],
-    ["C", "Comment (type, Enter sends)."],
-    ["X", "Request changes (type, Enter sends)."],
+    ["A · C · X", "Nothing here: approvals, comments and change requests are queued by the agent and approved in the Inbox."],
     ["M", "Merge; 1 merge, 2 squash, 3 rebase, Enter confirms."],
     ["B", "Open in the browser."],
     ["N · P", "Next or previous PR of the inbox. Only when opened from the Inbox."],
@@ -1094,9 +1092,7 @@ export default class Changes extends View {
     if (k === "d") { det.view = det.view === "diff" ? "overview" : "diff"; if (det.view === "diff") this.loadDiff(cx); cx.notify(); return true; }
     if (k === "r") { det.notes = !det.notes; cx.notify(); return true; }
     if (k === "b") { openUrl(det.url); return true; }
-    if (k === "a") { this.askAction("approve", cx); return true; }
-    if (k === "c") { this.askAction("comment", cx); return true; }
-    if (k === "x") { this.askAction("request", cx); return true; }
+    if (k === "a" || k === "c" || k === "x") { det.note = { ok: false, text: this.queuedFor(det) ? "This review is queued: approve it in the Inbox." : "Reviews and comments are approved in the Inbox: the agent queues them there." }; cx.notify(); return true; }
     if (k === "m") { this.askAction("merge", cx); return true; }
     return true;
   }
@@ -1113,10 +1109,7 @@ export default class Changes extends View {
       .child(div().flex_none().px(7).h(20).flex().items_center().rounded(5).border_1().border_color(t.border).text_size(11).text_color(t.accent).child(det.top.startsWith("gh:") ? det.top.slice(3) : det.top.split("/").pop()))
       .child(div().flex_1().min_w(0).truncate().font_semibold().child(`#${det.n}  ${det.title}`))
       .child(btn("pd-view", det.view === "diff" ? "Overview" : "Diff", (cx) => { det.view = det.view === "diff" ? "overview" : "diff"; if (det.view === "diff") this.loadDiff(cx); cx.notify(); }, null, "D"))
-      .when(Boolean(queued), (e) => e.child(div().flex_none().px(7).h(20).flex().items_center().rounded(5).border_1().border_color(t.border).text_size(11).text_color(t.blocked).child(`queued in broker (${queued.id})`)))
-      .when(!queued, (e) => e.child(btn("pd-approve", "Approve", (cx) => this.askAction("approve", cx), t.done, "A"))
-        .child(btn("pd-comment", "Comment", (cx) => this.askAction("comment", cx), null, "C"))
-        .child(btn("pd-request", "Request changes", (cx) => this.askAction("request", cx), t.blocked, "X")))
+      .child(div().flex_none().px(7).h(20).flex().items_center().rounded(5).border_1().border_color(t.border).text_size(11).text_color(queued ? t.blocked : t.dim).child(queued ? `queued in broker (${queued.id}) · approve in Inbox` : "reviews: approve in Inbox"))
       .child(btn("pd-merge", "Merge", (cx) => this.askAction("merge", cx), t.accent, "M"))
       .child(btn("pd-web", "Browser", () => openUrl(det.url), null, "B"));
     const c = det.confirm;
