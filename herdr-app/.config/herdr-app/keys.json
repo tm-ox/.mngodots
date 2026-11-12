@@ -62,6 +62,7 @@
     "f2": "tab.rename",
     "shift-f2": "space.rename",
     "ctrl-shift-r": "panel-keys.toggle",
+    "ctrl-shift-q": "panel-keys.wide",
     "ctrl-shift-f": "panel-keys.files",
     "ctrl-shift-a": "panel-keys.next",
     "ctrl-shift-g": "mod.open:changes-float",

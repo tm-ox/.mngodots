@@ -25,7 +25,9 @@ const MONTHS = ["January", "February", "March", "April", "May", "June", "July", 
 const DAYS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
 const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 const addDays = (s, n) => { const [y, m, d] = s.split("-").map(Number); return ymd(new Date(y, m - 1, d + n)); };
-const TABS = [["all", "All"], ["note", "Notes"], ["task", "Tasks"], ["bookmark", "Bookmarks"]];
+const TABS = [["all", "All"], ["note", "Notes"], ["task", "Tasks"], ["bookmark", "Bookmarks"], ["org", "Org"]];
+const isOrg = (i) => i.cal === "org" || i.cal === "orgn"; // OpenBot's own calendars (account bot): shown in All, Notes, Tasks and on the Org tab
+const calLabel = (i) => (isOrg(i) ? "ORG" : i.kind === "task" ? i.cal.toUpperCase() : "");
 const isBm = (i) => i.kind === "note" && i.cats.includes("bookmark");
 
 const api = async (req) => {
@@ -63,7 +65,7 @@ const HELP = [
     ["a", "Show or hide done tasks in All and Tasks."],
     ["r", "Reload from the server."],
     ["/", "Search titles and bodies."],
-    ["1 – 4", "Tabs: All, Notes, Tasks, Bookmarks. Bookmarks are hidden from All and Notes."],
+    ["1 – 5", "Tabs: All, Notes, Tasks, Bookmarks, Org (OpenBot's own tasks and notes, edited in place). Org items also appear in All, Notes and Tasks (ORG label). Bookmarks are hidden from All."],
   ]],
   ["Reader", [
     ["J K · ↑ ↓", "Scroll a line."],
@@ -143,7 +145,7 @@ export default class Memo extends View {
       if (want) {
         setShared("memo-open", null);
         const hit = this.items.find((i) => i.id === want);
-        if (hit) { this.tab = "all"; this.curId = hit.id; this.cur = null; this.note = null; this.state = ""; if (hit.etag) this.load(hit, cx); }
+        if (hit) { this.tab = isOrg(hit) ? "org" : "all"; this.curId = hit.id; this.cur = null; this.note = null; this.state = ""; if (hit.etag) this.load(hit, cx); }
       }
       if (!this.curId) this.keepSelection(cx);
       else if (this.cur && !this.typing && !this.saving && !Object.keys(this.diff()).length) {
@@ -156,12 +158,13 @@ export default class Memo extends View {
 
   visible() {
     const q = this.query;
+    const GRP = ["org", "orgn", "personal", "wrk", "ynk1", "memoj"], grp = (i) => { const n = GRP.indexOf(i.cal === "tm" ? "personal" : i.cal === "ynk" ? "ynk1" : i.cal === "memo" ? "memoj" : i.cal); return n < 0 ? 9 : n === 1 ? 0 : n; }; // by calendar first: org + org notes together, then TM, WRK, YNK, then MEMO notes
     const rank = (i) => (i.kind === "task" ? (isDone(i) ? 2 : 0) : 1);
     return this.items
-      .filter((i) => this.tab === "bookmark" ? isBm(i) : this.tab === "done" ? i.kind === "task" && isDone(i) : !isBm(i) && (this.tab === "all" || i.kind === this.tab) && (this.showDone || !(i.kind === "task" && isDone(i))))
+      .filter((i) => this.tab === "org" ? isOrg(i) && (this.showDone || !(i.kind === "task" && isDone(i))) : this.tab === "bookmark" ? isBm(i) : this.tab === "done" ? i.kind === "task" && isDone(i) : !isBm(i) && (this.tab === "all" || i.kind === this.tab) && (this.showDone || !(i.kind === "task" && isDone(i))))
       .filter((i) => this.tab !== "bookmark" || [...this.catFilter].every((c) => i.cats.includes(c)))
       .filter((i) => !q || i.title.toLowerCase().includes(q) || i.cats.some((c) => c.includes(q)))
-      .sort((a, b) => rank(a) - rank(b) || (a.kind === "task" && b.kind === "task" ? (a.due || "9999").localeCompare(b.due || "9999") : 0) || b.modified.localeCompare(a.modified));
+      .sort((a, b) => grp(a) - grp(b) || rank(a) - rank(b) || (a.kind === "task" && b.kind === "task" ? (a.due || "9999").localeCompare(b.due || "9999") : 0) || b.modified.localeCompare(a.modified));
   }
 
   keepSelection(cx) {
@@ -256,6 +259,7 @@ export default class Memo extends View {
   // B flips the selected item: task -> bookmark, note -> bookmark, bookmark -> task in TM.
   async flip(cx) {
     const c = this.cur; if (!c) return;
+    if (isOrg(c)) { this.note = "Org items stay in org"; cx.notify(); return; }
     await this.flush(cx);
     if (c.kind === "note" && !isBm(c)) { this.setField({ cats: [...c.cats, "bookmark"] }, cx); return; }
     const r = await api({ op: "convert", id: c.id, to: c.kind === "task" ? "bookmark" : "tm" });
@@ -463,7 +467,7 @@ export default class Memo extends View {
     else if (k === "a") { this.showDone = !this.showDone; this.keepSelection(cx); }
     else if (k === "r") this.refresh(cx);
     else if (k === "/") this.search.focus();
-    else if (k === "1" || k === "2" || k === "3" || k === "4") { this.tab = TABS[Number(k) - 1][0]; this.keepSelection(cx); }
+    else if (k === "1" || k === "2" || k === "3" || k === "4" || k === "5") { this.tab = TABS[Number(k) - 1][0]; this.keepSelection(cx); }
     else return;
     cx.stop_propagation(); cx.notify();
   }
@@ -487,7 +491,7 @@ export default class Memo extends View {
       return h_flex().id(`row-${i.id}`).h(28).px(10).gap(8).items_center().flex_none().rounded(7)
         .bg(sel ? t.selected : "#00000000").hover((s) => s.bg(sel ? t.selected : t.hover)).cursor_pointer().on_click((_e, cx) => { this.select(i.id, cx); this.handle.focus(); })
         .child(div().w(12).flex_none().text_size(11).font_medium().text_color(t.accent).child(i.kind === "note" ? "N" : isDone(i) ? "✓" : "T"))
-        .child(div().w(30).flex_none().text_size(10).font_medium().text_color(t.dim).child(i.kind === "task" ? i.cal.toUpperCase() : ""))
+        .child(div().w(30).flex_none().text_size(10).font_medium().text_color(t.dim).child(calLabel(i)))
         .child(div().flex_1().min_w(0).truncate().text_color(sel ? t.foreground : t.muted).when(i.kind === "task" && isDone(i), (e) => e.text_color(t.dim)).child(i.title))
         .when((i.att ?? []).length > 0, (e) => e.child(div().flex_none().text_size(11).text_color(t.dim).child("📎")))
         .child(div().flex_none().w(78).text_right().text_size(11).text_color(late ? t.blocked : t.dim).child(i.kind === "task" ? (i.due || "").slice(0, 10) : ""))
@@ -544,14 +548,14 @@ export default class Memo extends View {
       : v_flex().flex_1().min_h(0).p(14).gap(10)
         .child(h_flex().gap(8).items_center().flex_none()
           .child(div().flex_1().min_w(0).child(input(this.title, "title")))
-          .child(div().flex_none().text_size(11).text_color(t.dim).child(c.kind === "note" ? "Note · MEMO" : `Task · ${c.cal.toUpperCase()}`)))
+          .child(div().flex_none().text_size(11).text_color(t.dim).child(isOrg(c) ? `${c.kind === "note" ? "Note" : "Task"} · ORG (OpenBot)` : c.kind === "note" ? "Note · MEMO" : `Task · ${c.cal.toUpperCase()}`)))
         .child(v_flex().gap(6).flex_none().child(caption("Categories"))
           .child(h_flex().gap(6).items_center().flex_wrap()
             .children([...new Set([...CATS, ...this.items.flatMap((i) => i.cats), ...(this.extraCats ?? []), ...c.cats])].map((cat) => pill(`cat-${cat}`, cat, c.cats.includes(cat), (cx) => this.toggleCat(cat, cx))))
             .child(div().w(130).child(Input.new(this.newcat).h(22).px(8).rounded(6).border_1().border_color(this.focused.has("newcat") ? t.accent : t.border).bg(t.raised).text_size(11).text_color(t.foreground)))))
         .when(hasAtt, (e) => e.child(attRow()))
         .when(c.kind === "task", (e) => e.child(h_flex().gap(18).items_start().flex_none().flex_wrap()
-          .child(v_flex().gap(6).child(caption("Calendar")).child(h_flex().gap(6).children(CALS.map(([n, val]) => pill(`cal-${val}`, n, c.cal === val, (cx) => this.moveTo(val, cx))))))
+          .when(!isOrg(c), (e) => e.child(v_flex().gap(6).child(caption("Calendar")).child(h_flex().gap(6).children(CALS.map(([n, val]) => pill(`cal-${val}`, n, c.cal === val, (cx) => this.moveTo(val, cx)))))))
           .child(v_flex().gap(6).child(caption("Due")).child(pill("due-pick", this.due.value().trim() || "Set date…", this.calOpen, (cx) => { this.calOpen = !this.calOpen; this.dueOrig = this.due.value(); const d = this.dueParts().date; if (this.calOpen && d) this.calendar.set_value(d); this.pickerFocus = this.calOpen; this.pcur = d || today(); if (this.calOpen) this.handle.focus(); cx.notify(); })))
           .child(v_flex().gap(6).child(caption("Priority")).child(h_flex().gap(6).children(PRIOS.map(([n, val]) => pill(`pr-${val}`, n, c.prio === val, (cx) => this.setField({ prio: val }, cx))))))
           .child(v_flex().gap(6).child(caption("Status")).child(h_flex().gap(6).children(STATUSES.map(([n, val]) => pill(`st-${val}`, n, c.status === val, (cx) => this.setField({ status: val }, cx))))))))
@@ -564,20 +568,20 @@ export default class Memo extends View {
     const off = Math.min(this.pvOff, Math.max(0, lines.length - 1));
     const prioName = { 1: "High", 5: "Medium", 9: "Low" }[c?.prio];
     const statusName = (STATUSES.find(([, v]) => v === c?.status) ?? [])[0];
-    const meta = (text) => div().text_size(11).text_color(t.dim).child(text);
+    const meta = (text) => div().h(20).flex().items_center().flex_none().text_size(11).text_color(t.dim).child(text);
     const viewPane = !c ? editPane : v_flex().flex_1().min_h(0).p(14).gap(10)
-      .child(h_flex().gap(8).items_start().flex_none()
-        .child(div().flex_1().min_w(0).text_size(16).font_medium().text_color(t.foreground).child(c.title))
+      .child(h_flex().gap(8).items_center().flex_none().h(28)
+        .child(div().flex_1().min_w(0).truncate().text_size(16).font_medium().text_color(t.foreground).child(c.title))
         .child(h_flex().gap(6).flex_none()
           .child(pill("view-copy", "Copy", false, (cx) => { this.copyText((c.body ?? "").replace(/\n+$/, ""), "body", cx); cx.notify(); }))
           .when(this.urls().length > 0, (e) => e.child(pill("view-open", "Open link", false, (cx) => { this.openLink(this.urls()[0], cx); cx.notify(); })))
           .child(pill("view-edit", "Edit", false, (cx) => this.enterEdit(cx)))))
-      .child(h_flex().gap(8).items_center().flex_wrap().flex_none()
-        .child(meta(c.kind === "note" ? "Note · MEMO" : `Task · ${c.cal.toUpperCase()}`))
+      .child(h_flex().gap(8).items_center().flex_none().h(20).overflow_hidden()
+        .child(meta(isOrg(c) ? `${c.kind === "note" ? "Note" : "Task"} · ORG (OpenBot)` : c.kind === "note" ? "Note · MEMO" : `Task · ${c.cal.toUpperCase()}`))
         .children(c.cats.map((cat) => div().h(20).px(8).flex().items_center().flex_none().rounded(6).border_1().border_color(t.border).text_size(11).text_color(t.muted).child(cat)))
         .when(c.kind === "task" && Boolean(c.due), (e) => e.child(meta(`Due ${c.due}`)))
         .when(c.kind === "task" && Boolean(prioName), (e) => e.child(meta(`${prioName} priority`)))
-        .when(c.kind === "task", (e) => e.child(meta(statusName ?? ""))))
+        .when(c.kind === "task" && Boolean(statusName), (e) => e.child(meta(statusName))))
       .when(hasAtt, (e) => e.child(attRow()))
       .child(div().h(1).flex_none().bg(t.border))
       .child(div().id("memo-view").flex_1().min_h(0).overflow_hidden()

@@ -5,7 +5,7 @@
 // pane beside the panel focuses it; j/k or arrows move, Left/Right (h/l) fold and unfold, Enter opens or toggles,
 // r refreshes, o opens the full Inbox; Alt+H/J/K/L or Esc leaves (pane.go).
 import { View, div } from "gpui-kit";
-import { v_flex, h_flex, InputState, Input } from "gpui-base";
+import { v_flex, h_flex, InputState, Input, TextView } from "gpui-base";
 import { run, theme, shared, setShared, nextCommand, exec, hc, home, terminals, notify, focused } from "herdr";
 
 // Leave a side panel. A panel focused by handle.focus() (keys, toggle) leaves the host's focus context on the terminal pane it
@@ -409,7 +409,7 @@ export default class InboxPanel extends View {
     });
   }
 
-  // Keeps the same request selected; drops marks whose request changed or vanished, and pauses marking for 1 s after any change.
+  // Keeps the same request selected; drops a pending mark whose request changed or vanished, and pauses acting for 1 s after any change.
   applyDetail(list) {
     const d = this.det; if (!d) return;
     const sane = list.filter((q) => q && ID_RE.test(String(q.id)) && HASH_RE.test(String(q.hash)));
@@ -422,6 +422,16 @@ export default class InboxPanel extends View {
     d.idx = i >= 0 ? i : Math.min(d.idx, Math.max(0, sane.length - 1));
   }
 
+  // Click path: Approve marks the shown request and sends only it at once; Reject marks it and shows the confirm bar.
+  markCurrent(act, cx) {
+    const d = this.det, q = d?.list[d.idx];
+    if (!q || this.running || Date.now() < this.pauseUntil) return;
+    if (act === "a" && q.problems?.length) { notify({ title: "Cannot approve", body: "This request failed validation; reject it or leave it", level: "info" }); return; }
+    this.marks.set(q.id, { act, hash: q.hash }); this.results = null;
+    if (act === "a") { this.confirm = false; this.runDecide(cx); } else this.confirm = true; // approve sends at once (the key dialog on tm-serve is the safeguard); reject asks first
+    cx.notify();
+  }
+
   closeDetail() { this.det = null; this.marks.clear(); this.confirm = false; this.results = null; this.handle.focus(); }
 
   detKey(e, cx) {
@@ -432,22 +442,16 @@ export default class InboxPanel extends View {
     else if (k === "up" || k === "k") { if (n) d.idx = (d.idx - 1 + n) % n; this.confirm = false; }
     else if (k === "r") { if (!d.busy) this.loadDetail(cx); }
     else if (k === "b") { this.openGbOk(); }
-    else if (k === "a" || k === "d") {
-      const q = d.list[d.idx];
-      if (!q || this.running || Date.now() < this.pauseUntil) { cx.stop_propagation(); return; }
-      if (k === "a" && q.problems?.length) { notify({ title: "Cannot approve", body: "This request failed validation; reject it or leave it", level: "info" }); cx.stop_propagation(); return; }
-      this.marks.set(q.id, { act: k, hash: q.hash }); this.confirm = false; this.results = null;
-    }
-    else if (k === "u") { const q = d.list[d.idx]; if (q) this.marks.delete(q.id); this.confirm = false; }
+    else if (k === "a" || k === "d") { this.markCurrent(k, cx); cx.stop_propagation(); return; } // same as the buttons: a sends this one, d asks to confirm a reject
     else if (k === "enter") {
-      if (this.running || Date.now() < this.pauseUntil || !this.marks.size) { cx.stop_propagation(); return; }
-      if (this.confirm) this.runDecide(cx); else this.confirm = true;
+      if (this.running || Date.now() < this.pauseUntil || !this.confirm) { cx.stop_propagation(); return; }
+      this.runDecide(cx); // Enter confirms a pending reject
     }
     else return;
     cx.stop_propagation(); cx.notify();
   }
 
-  // One ssh -tt per batch on a fresh connection (ControlPath=none), so the confirm-on-use dialog for the key appears every time.
+  // One ssh -tt per decision on a fresh connection (ControlPath=none), so the confirm-on-use dialog for the key appears every time.
   // tm-serve re-checks each hash and the item itself; nothing here approves anything by itself.
   runDecide(cx) {
     const marks = [...this.marks];
@@ -457,8 +461,8 @@ export default class InboxPanel extends View {
     exec("ssh", ["-tt", "-o", "ControlPath=none", REV_HOST, "GB_SOURCE=mod ~/.local/bin/gh-broker decide " + specs.join(" ")], { timeout: 180000 })
       .then((r) => {
         const got = new Map();
-        for (const l of String(r.stdout ?? "").split(/\r?\n/)) { const m = /^RESULT (\S+) (approved|rejected|refused)$/.exec(l.trim()); if (m) got.set(m[1], m[2]); }
-        this.results = marks.map(([id, m]) => ({ id, text: got.get(id) ?? "no answer (dialog declined or ssh failed)", want: m.act === "a" ? "approved" : "rejected" }));
+        for (const l of String(r.stdout ?? "").split(/\r?\n/)) { const m = /^RESULT (\S+) (approved|rejected|refused)(.*)$/.exec(l.trim()); if (m) got.set(m[1], m[2] + (m[2] === "refused" ? clean(m[3], 140) : "")); }
+        this.results = marks.map(([id, m]) => ({ id, text: got.get(id) ?? "no answer (dialog declined or ssh failed)", want: m.act === "a" ? "approved" : "rejected" })).map((r) => ({ ...r, ok: r.text === r.want }));
       })
       .catch((e) => { this.results = marks.map(([id]) => ({ id, text: "failed: " + clean(e.message ?? e, 100), want: "" })); })
       .then(() => { this.marks.clear(); this.running = false; setShared("broker-ask", Date.now()); this.loadDetail(this.cxRef); this.cxRef.notify(); });
@@ -466,22 +470,28 @@ export default class InboxPanel extends View {
 
   renderDet(t, focused) {
     const d = this.det, n = d.list.length, q = d.list[d.idx];
-    const box = (cap, kids, color) => v_flex().flex_none().rounded(7).border_1().border_color(color ?? t.border).p(8).gap(3)
-      .child(div().text_size(10).font_medium().text_color(color ?? t.accent).child(cap.toUpperCase())).children(kids);
+    const box = (cap, kids, color, capColor) => v_flex().flex_none().rounded(7).border_1().border_color(color ?? t.border).p(8).gap(3)
+      .child(div().text_size(10).font_medium().text_color(capColor ?? color ?? t.accent).child(cap.toUpperCase())).children(kids);
     const kv = (key, v) => h_flex().gap(8).items_start().child(div().flex_none().w(52).text_size(11).text_color(t.dim).child(key)).child(div().flex_1().min_w(0).text_size(12).text_color(t.foreground).child(clean(v, 300)));
     const lines = (s, size = 12, color = t.muted) => clean(s).split("\n").map((l) => (l.trim() ? div().min_w(0).text_size(size).text_color(color).child(l) : div().h(6)));
+    // Agent text rendered as markdown, defanged: images and raw HTML are dropped (no remote fetches), links are shown but never opened.
+    const md = (id, s) => div().px(12).py(10).child(TextView.markdown(id, clean(s).replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/<[^>]*>/g, "")).on_link_click(() => {}).selectable(true).text_size(12).text_color(t.foreground));
     const kids = [];
     if (d.err) kids.push(div().text_size(12).text_color(t.blocked).child(d.err));
     if (!q) kids.push(div().p(8).text_size(12).text_color(d.loading ? t.dim : t.muted).child(d.loading ? "Loading…" : "No approvals waiting."));
     else {
-      const mark = this.marks.get(q.id), where = (q.repo ?? "").split("/").pop() + (q.pr ? ` #${q.pr}` : q.branch ? ` ${q.branch}` : "");
+      const mark = this.marks.get(q.id);
       kids.push(h_flex().gap(6).items_center().min_w(0)
         .child(div().flex_none().h(16).px(6).flex().items_center().rounded(5).border_1().border_color(t.border).text_size(11).text_color(t.blocked).child(clean(q.kind, 20) + (q.mode ? " " + clean(q.mode, 20).replace(/^--/, "") : "")))
-        .child(div().flex_1().min_w(0).truncate().text_size(12).text_color(t.accent).child(clean(where, 120)))
+        .child(div().flex_1().min_w(0).truncate().text_size(12).text_color(t.accent).child(String(q.id).slice(-6)))
         .when(Boolean(mark), (el) => el.child(div().flex_none().h(16).px(6).flex().items_center().rounded(5).border_1().border_color(t.border).text_size(11).text_color(mark?.act === "a" ? t.done : t.blocked).child(mark?.act === "a" ? "approve" : "reject"))));
       const facts = [kv("repo", q.repo), q.branch ? kv("branch", q.branch) : null, q.pr ? kv("PR", `#${q.pr}`) : null, q.head ? kv("head", String(q.head).slice(0, 10)) : null,
         q.base ? kv("base", q.base + (q.behind ? `  (${q.behind} behind)` : "")) : null, kv("id", q.id), kv("hash", String(q.hash).slice(0, 16))].filter(Boolean);
       kids.push(box("Request", facts));
+      if (q.title || q.body) kids.push(box((q.kind === "push" ? "From agent, untrusted (plain text)" : "Text that will be posted on GitHub (untrusted, plain text)"), [...(q.title ? [div().min_w(0).text_size(13).font_semibold().text_color(t.foreground).child(clean(q.title, 300)), div().h(4)] : []), ...(q.body ? [md("inb-q-" + q.id, q.body)] : [])], t.border, t.accent));
+      if (q.kind === "push") { const pc = d.list.find((x) => x.kind === "pr-create" && x.repo === q.repo && x.branch === q.branch); const pi = pc ? d.list.indexOf(pc) + 1 : 0;
+        if (pc && (pc.title || pc.body)) kids.push(box(`PR text queued with this push (approval ${pi}/${n}, ${clean(pc.kind, 20)})`, [...(pc.title ? [div().min_w(0).text_size(13).font_semibold().text_color(t.foreground).child(clean(pc.title, 300)), div().h(4)] : []), ...(pc.body ? [md("inb-pc-" + pc.id, pc.body)] : [])], t.border, t.accent));
+        else kids.push(box("PR text", [div().text_size(12).text_color(t.dim).child("No PR draft is queued for this branch.")], t.border)); }
       if (q.problems?.length) kids.push(box("Failed validation (cannot be approved)", q.problems.map((w) => div().text_size(12).text_color(t.blocked).child(clean(w, 200))), t.blocked));
       if (q.warnings?.length) kids.push(box("Warnings", q.warnings.map((w) => div().min_w(0).text_size(12).text_color(t.working).child(clean(w, 300))), t.working));
       if (q.head_moved) kids.push(box("Head moved", [div().text_size(12).text_color(t.blocked).child("the PR head is no longer the one this draft was written at")], t.blocked));
@@ -494,16 +504,18 @@ export default class InboxPanel extends View {
           .child(div().flex_none().w(34).text_size(11).text_color(t.done).child("+" + clean(f.add, 8))).child(div().flex_none().w(34).text_size(11).text_color(t.blocked).child("-" + clean(f.del, 8)))
           .child(div().flex_1().min_w(0).truncate().text_size(12).text_color(t.muted).child(clean(f.path, 200))))));
       }
-      if (q.title || q.body) kids.push(box("From agent, untrusted (plain text)", [...(q.title ? [div().min_w(0).text_size(13).font_semibold().text_color(t.foreground).child(clean(q.title, 300)), div().h(4)] : []), ...lines(q.body)], t.border));
     }
-    const na = [...this.marks.values()].filter((m) => m.act === "a").length, nr = this.marks.size - na;
-    const summary = [na ? `approve ${na}` : "", nr ? `reject ${nr}` : ""].filter(Boolean).join(", ");
     const shortId = (id) => id.slice(9, 15) + "-" + id.slice(16);
+    const btn = (id, label, color, onClick) => div().id(id).flex_none().h(22).px(10).flex().items_center().rounded(6).border_1().border_color(color).cursor_pointer().text_size(12).font_medium().text_color(color).hover((x) => x.bg(t.hover)).on_click((_e, cx) => { cx.stop_propagation(); onClick(cx); }).child(label);
+    const what = (id) => { const x = d.list.find((y) => y.id === id); return x ? `${x.kind}${x.mode ? " " + String(x.mode).replace(/^--/, "") : ""} ${(x.repo ?? "").split("/").pop()} ${x.branch ?? (x.pr ? "#" + x.pr : "")}` : shortId(id); };
     const hint = this.running ? div().text_size(12).text_color(t.working).child("Waiting for tm-serve… answer the key dialog")
-      : this.confirm ? h_flex().gap(10).items_center().min_w(0).child(div().flex_1().min_w(0).truncate().text_size(12).text_color(t.working).child(`${summary}: ${[...this.marks.keys()].map(shortId).join(" ")}`)).child(keyHints("Enter confirm · Esc cancel", t))
+      : this.confirm ? h_flex().gap(8).items_center().min_w(0).child(div().flex_1().min_w(0).truncate().text_size(12).text_color(t.working).child(`reject: ${[...this.marks.keys()].map(what).join(", ")}`))
+        .child(btn("inb-confirm", "Confirm", t.done, (cx) => this.runDecide(cx))).child(btn("inb-cancel", "Cancel", t.muted, (cx) => { this.confirm = false; cx.notify(); }))
+      : q && !this.marks.size ? h_flex().gap(8).items_center().min_w(0)
+        .child(btn("inb-approve", "Approve", t.done, (cx) => this.markCurrent("a", cx))).child(btn("inb-reject", "Reject", t.blocked, (cx) => this.markCurrent("d", cx)))
+        .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(t.dim).child("Approve sends this one · j/k next · Esc back"))
       : keyHints(this.hintText(), t);
-    if (this.results) kids.unshift(box("Result", this.results.map((r) => div().min_w(0).text_size(12).text_color(r.text === r.want ? t.done : t.blocked).child(`${shortId(r.id)}  ${clean(r.text, 120)}`)), t.border));
-    if (this.marks.size && !this.confirm && !this.running) kids.push(div().px(4).text_size(11).text_color(t.dim).child(`marked: ${summary}. Enter asks to confirm.`));
+    if (this.results) kids.unshift(box("Result", this.results.map((r) => div().min_w(0).text_size(12).text_color(r.ok ? t.done : t.blocked).child(`${shortId(r.id)}  ${clean(r.text, 120)}`)), t.border));
     return v_flex().id("inbox-panel").track_focus(this.handle).on_key_down((e, cx) => this.key(e, cx)).size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(focused ? t.accent : t.border).text_color(t.foreground).text_size(13)
       .child(h_flex().h(30).flex_none().px(12).gap(8).items_center().border_b(1).border_color(t.border)
         .child(div().flex_none().text_size(12).font_medium().text_color(t.accent).child(n ? `Approval ${d.idx + 1}/${n}` : "Approvals"))
@@ -512,7 +524,7 @@ export default class InboxPanel extends View {
       .child(div().flex_none().min_h(30).px(10).py(4).flex().items_center().border_t(1).border_color(t.border).child(hint));
   }
 
-  hintText() { return this.marks.size ? "a approve · d reject · u clear · Enter go · j/k next · Esc back" : "a approve · d reject · j/k next · r refresh · b gb-ok · Esc back"; }
+  hintText() { return this.confirm ? "Enter confirm · Esc cancel" : "a approve (sends) · d reject · j/k next · r refresh · b gb-ok · Esc back"; }
 
   after150(cmd) { this.cxRef?.timer.after(150, () => run(cmd)); }
 
@@ -634,12 +646,13 @@ export default class InboxPanel extends View {
         .child(h_flex().gap(6).items_center().min_w(0)
           .child(chip(q.kind + (q.mode ? " " + q.mode.replace(/^--/, "") : ""), t.blocked))
           .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(t.accent).child(where))
+          .child(chip(String(q.id).slice(-6), t.dim))
           .child(chip(age(new Date(q.at).toISOString()), t.dim)));
     };
     const hrow = (it) => {
-      const b = it.bk, stale = !b.syncAt || Date.now() - b.syncAt > 2 * 3600e3, bad = !b.ok || stale;
-      const text = !b.ok ? "tm-serve not reachable" : b.syncAt ? `broker: last sync ${age(new Date(b.syncAt).toISOString())} ago${stale ? " (stale)" : ""}` : "broker: no sync logged";
-      return h_flex().id(it.id).flex_none().px(10).py(3).gap(6).items_center().child(div().w(7).h(7).flex_none().rounded(4).bg(bad ? t.blocked : t.done)).child(div().min_w(0).truncate().text_size(11).text_color(bad ? t.blocked : t.dim).child(text));
+      const b = it.bk, bad = !b.ok; // only an unreachable server is red; an old sync is just information
+      const text = !b.ok ? "tm-serve not reachable" : b.syncAt ? `broker: last sync ${age(new Date(b.syncAt).toISOString())} ago` : "broker: no sync logged";
+      return h_flex().id(it.id).flex_none().px(10).py(3).gap(6).items_center().child(div().w(7).h(7).flex_none().rounded(4).bg(bad ? t.blocked : t.dim)).child(div().min_w(0).truncate().text_size(11).text_color(bad ? t.blocked : t.dim).child(text));
     };
     const more = (it) => div().id(it.id).px(10).py(4).text_size(11).text_color(t.dim).child(it.text);
     const head = (it) => {

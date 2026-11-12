@@ -11,6 +11,8 @@ import { run, nextCommand, layout, spaces, shared, focused } from "herdr";
 // moved onto the panel (pane.go), `focused().pane` is null and pane.go works as usual.
 const leavePanel = (direction) => { const f = focused(); if (direction === "left" && f?.pane) run("pane.focus", { pane: f.pane }); else run("pane.go", { direction }); };
 const STACK = "panel-body";
+const NARROW = 368, WIDE = 1000;
+let before = NARROW; // the width the panel had before Ctrl+Shift+Q widened it; collapsing returns to exactly that
 // Panel mods that take the keyboard (mod.json "focusable": true, "focus" command): opened or switched to by these keys,
 // they are focused right away, so Esc leaves and j/k etc. work at once. Add a mod name here when it becomes focusable.
 const SKIP = new Set(["sched"]);
@@ -49,6 +51,8 @@ export default class PanelKeys extends View {
         }
         // Alt+H / Alt+Left: global keys reach the host before a panel's own handler, so a key-focused panel never saw them.
         if (c === "left") { if ([...FOCUSABLE].some((m) => shared("pf:" + m))) leavePanel("left"); else run("pane.go", { direction: "left" }); continue; }
+        // Ctrl+Shift+Q: widen the panel (WIDE px) or back to the width it had before (NARROW px if unknown); opens the panel first if hidden. layout.resize needs size within min/max (280..1100).
+        if (c === "wide") { const w = panel?.size?.px ?? NARROW, isWide = w >= WIDE - 20; if (!isWide) before = w; if (!visible) run("layout.show", { id: "panel" }); run("layout.resize", { id: "panel", px: isWide ? before : WIDE }); cx.notify(); continue; }
         if (c === "toggle") { if (visible) run("layout.hide", { id: "panel" }); else open(active); }
         else if (c === "next" || c === "prev") {
           if (!visible) { open(active); continue; }
