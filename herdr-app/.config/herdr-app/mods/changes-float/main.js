@@ -190,10 +190,6 @@ export default class Changes extends View {
     this.tInput.on("submit", (_e, cx) => { if (this.inew && (this.tInput.value() ?? "").trim()) { this.inew.stage = "body"; this.bInput.focus(); cx.notify(); } });
     this.bInput.on("submit", (_e, cx) => this.createIssue(cx));
     for (const i of [this.tInput, this.bInput]) { i.on("focus", (_e, cx) => { this.typing = true; cx.notify(); }); i.on("blur", (_e, cx) => { this.typing = false; cx.notify(); }); }
-    this.dInput = InputState.new({ placeholder: "Write your message, Enter to send" });
-    this.dInput.on("submit", (_e, cx) => this.runAction(cx));
-    this.dInput.on("focus", (_e, cx) => { this.typing = true; cx.notify(); });
-    this.dInput.on("blur", (_e, cx) => { this.typing = false; cx.notify(); });
     this.input.on("focus", (_e, cx) => { this.typing = true; cx.notify(); });
     this.input.on("blur", (_e, cx) => { this.typing = false; cx.notify(); });
     this.handle.focus();
@@ -1019,58 +1015,37 @@ export default class Changes extends View {
     return (shared("broker")?.queue ?? []).find((q) => (q.kind === "review" || q.kind === "comment") && String(q.pr) === String(det.n) && (full ? (q.repo ?? "").toLowerCase() === full : (q.repo ?? "").split("/").pop().toLowerCase() === name));
   }
 
+  // Merge is the only action posted from here: reviews and comments go through the Inbox (gh-broker).
   askAction(kind, cx) {
     const det = this.detail;
-    if (!det || det.busy || !det.data) return;
-    if (kind !== "merge" && this.queuedFor(det)) return;
+    if (kind !== "merge" || !det || det.busy || !det.data) return;
     det.confirm = { kind, method: "merge" }; det.note = null;
-    if (kind === "comment" || kind === "request" || kind === "approve") {
-      det.prefill = det.local || proposedText(det.draft); this.dInput.set_value(det.prefill); this.dInput.focus();
-      // Prefill from an agent-written draft: <any project>/docs/drafts/<repo>-pr-<n>.md (first line block, trimmed).
-      const name = det.top.split("/").pop(), n = det.n;
-      cx.spawn(async (cx) => {
-        try {
-          const r = await hc(["exec", "sh", "-c", 'f=$(find "$HOME/workspace" "$HOME/repos" -maxdepth 8 -path "*/docs/drafts/$1-pr-$2.md" -print -quit 2>/dev/null); [ -n "$f" ] && cat "$f"', "sh", name, String(n)]);
-          const text = r.code === 0 ? r.stdout.trim() : "";
-          const cur = this.dInput.value?.() ?? ""; if (text && this.detail === det && det.confirm?.kind === kind && (!cur || cur === proposedText(det.draft))) { this.dInput.set_value(text); cx.notify(); } // a local draft (e.g. passport's) wins over rev's untouched prefill
-        } catch {}
-      });
-    }
     cx.notify();
   }
 
   cancelAction(cx) {
     if (!this.detail) return;
-    this.detail.confirm = null; this.typing = false; this.dInput.set_value(""); this.handle.focus(); cx.notify();
+    this.detail.confirm = null; this.handle.focus(); cx.notify();
   }
 
   runAction(cx) {
     const det = this.detail, c = det?.confirm;
-    if (!det || !c || det.busy) return;
-    let text = (this.dInput.value() ?? "").trim();
-    // The box is one line: if the text is still the prefilled draft, post the original with its line breaks and bullets.
-    if (det.prefill && text.replace(/\s+/g, "") === det.prefill.replace(/\s+/g, "")) text = det.prefill; // the one-line box drops newlines, so compare ignoring all whitespace
-    let args;
-    if (c.kind === "approve") args = ["pr", "review", String(det.n), "--approve", ...(text ? ["-b", text] : [])];
-    else if (c.kind === "comment" && text) args = ["pr", "review", String(det.n), "--comment", "-b", text];
-    else if (c.kind === "request" && text) args = ["pr", "review", String(det.n), "--request-changes", "-b", text];
-    else if (c.kind === "merge") args = ["pr", "merge", String(det.n), "--" + c.method];
-    else return;
-    const done = { approve: "Approved", comment: "Comment posted on", request: "Changes requested on", merge: "Merged" }[c.kind];
-    det.busy = true; det.confirm = null; this.typing = false; this.dInput.set_value(""); this.handle.focus();
+    if (!det || !c || c.kind !== "merge" || det.busy) return;
+    const args = ["pr", "merge", String(det.n), "--" + c.method];
+    det.busy = true; det.confirm = null; this.handle.focus();
     cx.notify();
     cx.spawn(async (cx) => {
       try {
         const r = await this.ghRun(det, args);
         if (r.code !== 0) throw new Error((r.stderr || r.stdout || "gh failed").trim().split("\n")[0]);
-        det.note = { ok: true, text: `${done} #${det.n}` };
+        det.note = { ok: true, text: `Merged #${det.n}` };
         this.prAt = 0; this.loadPrs(cx, true); this.fetchDetail(cx); setShared("inbox-ask", Date.now());
       } catch (e) { det.note = { ok: false, text: String(e).replace(/^Error: /, "") }; }
       det.busy = false; cx.notify();
     });
   }
 
-  // One step back: a confirm/comment box closes, the diff returns to the overview, the overview returns to the list.
+  // One step back: the merge confirm closes, the diff returns to the overview, the overview returns to the list.
   detailBack(cx) {
     const det = this.detail;
     if (det.confirm) this.cancelAction(cx);
@@ -1080,12 +1055,11 @@ export default class Changes extends View {
 
   detailKey(e, cx) {
     const det = this.detail, k = e.key;
-    if (k === "escape" && det.confirm) { this.cancelAction(cx); return true; } // only reaches us from the comment box
-    if (this.typing) return false; // the comment box has the keys
+    if (k === "escape" && det.confirm) { this.cancelAction(cx); return true; }
     if (k === "backspace" || k === "left" || k === "h") { this.detailBack(cx); return true; }
     if (det.confirm) {
       if (det.confirm.kind === "merge" && ["1", "2", "3"].includes(k)) { det.confirm.method = ["merge", "squash", "rebase"][+k - 1]; cx.notify(); return true; }
-      if (k === "enter" && det.confirm.kind !== "comment" && det.confirm.kind !== "request") { this.runAction(cx); return true; }
+      if (k === "enter") { this.runAction(cx); return true; }
       return true;
     }
     if (det.fromInbox && (k === "n" || k === "p")) { this.stepInbox(k === "n" ? 1 : -1, cx); return true; }
@@ -1114,8 +1088,7 @@ export default class Changes extends View {
       .child(btn("pd-web", "Browser", () => openUrl(det.url), null, "B"));
     const c = det.confirm;
     const confirm = c && h_flex().flex_none().px(14).py(8).gap(10).items_center().border_b(1).border_color(t.border).bg(t.raised)
-      .child(div().text_size(12).text_color(t.foreground).child(({ approve: `Approve #${det.n}?`, comment: `Comment on #${det.n}:`, request: `Request changes on #${det.n}:`, merge: `Merge #${det.n} with a ${c.method} commit?` })[c.kind]))
-      .when(c.kind === "comment" || c.kind === "request" || c.kind === "approve", (e) => e.child(div().id("pd-input").flex_1().min_w(0).h(30).px(10).flex().items_center().rounded(9).border_1().border_color(this.typing ? t.accent : t.border).cursor_text().on_mouse_down("left", (_e, cx) => cx.stop_propagation()).child(Input.new(this.dInput).h_full().text_size(12).text_color(t.foreground))))
+      .child(div().text_size(12).text_color(t.foreground).child(`Merge #${det.n} with a ${c.method} commit?`))
       .when(c.kind === "merge", (e) => e.child(div().text_size(11).text_color(t.dim).child("1 merge | 2 squash | 3 rebase")).child(div().flex_1()))
       .child(btn("pd-go", "Confirm", (cx) => this.runAction(cx), t.accent, "Enter"))
       .child(btn("pd-cancel", "Cancel", (cx) => this.cancelAction(cx), null, "Backspace"));

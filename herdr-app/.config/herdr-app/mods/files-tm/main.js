@@ -213,6 +213,6 @@ export default class Files extends View {
         .when(Boolean(this.error) || !this.entries.get("")?.length, el => el.child(div().p(8).text_size(12).text_color(t.dim).child(this.error || (this.loading ? "Loading files…" : this.root ? "No files" : "No folder"))))
         .when(this.limited, el => el.child(div().p(8).text_size(11).text_color(t.dim).child("File list limited to 500 entries per folder and 5,000 total")))))
       .when(Boolean(this.file), el => el.child(this.code ? Editor.new(this.code).flex_1().min_h(0) : div().p(12).text_color(t.dim).child(this.fileError || "Loading file…")))
-      .when(focused, el => el.child(div().flex_none().px(14).py(6).border_t(1).border_color(t.border).truncate().text_size(11).text_color(t.dim).child(this.file ? "← / h / Esc back to the list" : "j k move · l Enter open · h close / parent · r refresh · Esc leave")));
+      .when(focused, el => el.child(div().flex_none().px(14).py(6).border_t(1).border_color(t.border).truncate().text_size(11).text_color(t.dim).child(this.file ? "← / h / Esc back to the list" : "j k move · l Enter open · h close / parent · r refresh · Alt+H Inbox · Esc leave")));
   }
 }

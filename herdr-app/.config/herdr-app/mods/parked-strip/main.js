@@ -3,7 +3,7 @@
 
 import { View, div } from "gpui-kit";
 import { h_flex } from "gpui-base";
-import { terminals, panes, theme, openOverlay } from "herdr";
+import { terminals, panes, theme, run, setShared } from "herdr";
 
 export default class ParkedStrip extends View {
   render() {
@@ -22,7 +22,7 @@ export default class ParkedStrip extends View {
       .text_color(t.muted)
       .cursor_pointer()
       .hover((s) => s.opacity(0.85))
-      .on_click(() => openOverlay({ mod: "jump-tm", kind: "dialog", width: 780, height: 680, props: { filter: "parked" } }))
+      .on_click(() => { setShared("map-tm.start", "parked"); run("mod.open", { name: "map-tm" }); })
       .child(div().flex_none().text_color(t.accent).child("⏸ " + parked.length + " parked"))
       .child(div().flex_1().min_w(0).truncate().text_color(t.dim).child(names));
   }

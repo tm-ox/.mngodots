@@ -1,0 +1,5 @@
+#!/bin/sh
+# Launch the newest OpenBot AppImage, so updates never leave a stale versioned path behind.
+latest=$(ls -v "$HOME"/Applications/OpenBot-*-x86_64.AppImage 2>/dev/null | tail -n 1)
+[ -n "$latest" ] || { echo "openbot: no AppImage in ~/Applications" >&2; exit 1; }
+exec "$latest" "$@"

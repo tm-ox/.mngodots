@@ -67,6 +67,12 @@ chsh -s /bin/zsh
 ```
 Profiles are listed in `vivaldi/.config/vivaldi-dots/MANIFEST.md`. Reinstall extensions manually. Before a reinstall, refresh the snapshot with `vivaldi-dots.py backup`.
 
+**Helper scripts** (`scripts/.local/bin/`, stowed into `~/.local/bin` by the step 4 stow):
+- `tm-mount`: mounts tm-serve's home at `~/tm-serve` over sshfs (toggle; `-u` unmounts). Needs `sshfs` (in `pkglist.txt`) and the `tm-serve` host in `~/.ssh/config`. Run `mkdir ~/tm-serve` once. For PCManFM add the sidebar bookmark: `echo "file://$HOME/tm-serve tm-serve" >> ~/.config/gtk-3.0/bookmarks`.
+- `openbot`: starts the newest `~/Applications/OpenBot-*-x86_64.AppImage`; the OpenBot desktop entry (`Exec="$HOME/.local/bin/openbot" %U`) and the SUPER+z scratchpad bind use it, so updates need no path edits.
+
+**Custom fonts** (`~/.local/share/fonts`, not in this repo; some are not redistributable): only the fonts that can't be re-downloaded are backed up, as `~/Documents/wrk/assets/fonts/fonts-keep-YYYYMMDD.tar.gz` (MEGA-synced, private): Dicotype, Monotype Imaging, Tokotype, Unknown Vendor, Satoshi, Poppins (Fontmirror), Avenir Light, Vintage Moon, Scandia, Widescreen. Restore: `tar -xzf ~/Documents/wrk/assets/fonts/fonts-keep-*.tar.gz -C ~/.local/share/fonts && fc-cache -f`. Re-download from Google Fonts: Atkinson Hyperlegible (and Next), Be Vietnam Pro, Figtree, Fredoka, Hanken Grotesk, Inter, Instrument Sans, JetBrains Mono, Manrope, Mona Sans, Outfit, Public Sans, Questrial, Raleway, Urbanist, Zalando Sans SemiExpanded, Roboto; URW Gothic from the URW/gsfonts package. Refresh the tarball after adding a non-free font.
+
 ---
 
 ### Keybindings

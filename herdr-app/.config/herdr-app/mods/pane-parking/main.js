@@ -3,6 +3,7 @@
 // "pane-parking.name" (name the focused terminal), "pane-parking.tab-left|tab-right"
 // and "pane-parking.space-up|space-down" (reorder the shown tab / space),
 // "pane-parking.next-waiting|prev-waiting" (jump to the next blocked, else finished, agent),
+// "pane-parking.map" (open the agent map mod, or step to its next agent when it is open),
 // "pane-parking.panel-wide" (toggle the right panel between its normal and a wide size).
 
 import { View, div } from "gpui-kit";
@@ -106,8 +107,13 @@ export default class PaneParking extends View {
             const value = terminals().find((x) => x.address === terminal)?.labels?.pname ?? "";
             openOverlay({ mod: "name-terminal", kind: "dialog", width: 420, props: { terminal, value } });
           }
+        } else if (c === "map") {
+          // Ctrl+Shift+A: open the agent map, or, when it is already open (it beats every 0.5 s), step to its next agent.
+          // A key bound straight to mod.open would close an open map instead.
+          if (Date.now() - (shared("map-tm.beat") || 0) < 1500) setShared("map-tm.step", { n: (shared("map-tm.step")?.n ?? 0) + 1, at: Date.now() });
+          else run("mod.open", { name: "map-tm" });
         } else if (c === "list") {
-          openOverlay({ mod: "jump-tm", kind: "dialog", width: 780, height: 680, props: { filter: "parked" } }); // the parked mod stays installed, unbound
+          setShared("map-tm.start", "parked"); run("mod.open", { name: "map-tm" }); // the agent map, opened on its parked group (jump-tm and parked stay installed, unbound)
         }
         cx.notify();
       }

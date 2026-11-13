@@ -1,0 +1,8 @@
+#!/bin/sh
+# Mount (or unmount, if already mounted) tm-serve's home at ~/tm-serve over sshfs. Usage: tm-mount [-u]
+mp="$HOME/tm-serve"
+if [ "$1" = "-u" ] || { [ -z "$1" ] && mountpoint -q "$mp"; }; then
+  fusermount3 -u "$mp" && echo "unmounted $mp"; exit
+fi
+mountpoint -q "$mp" && { echo "already mounted: $mp"; exit; }
+sshfs tm-serve: "$mp" -o reconnect,ServerAliveInterval=15,ServerAliveCountMax=3 && echo "mounted $mp"

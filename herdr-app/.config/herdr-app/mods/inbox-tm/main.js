@@ -1,9 +1,9 @@
 // Inbox: side panel of the PRs that need you, from status-git's shared("inbox") (no polling of its own).
 // Sections (a PR appears once, first match wins): To fix, To review, Re-review, New comments, Ready to merge.
-// Click a row: opens the git window straight on that PR (shared "git-open"). The header title opens the full Inbox.
+// Click a row: opens the git window straight on that PR (shared "git-open"); a row with a Rev draft ("drafted") opens the draft here read-only instead (g opens git). The header title opens the full Inbox.
 // Section headers fold (state kept in localStorage). Keyboard: mod.json is focusable, so Alt+L (pane.go right) from the
 // pane beside the panel focuses it; j/k or arrows move, Left/Right (h/l) fold and unfold, Enter opens or toggles,
-// r refreshes, o opens the full Inbox; Alt+H/J/K/L or Esc leaves (pane.go).
+// r refreshes, o opens the full Inbox; Alt+L steps to the next panel tab (Files), Alt+H to the previous or out of the panel (panel-keys), Esc leaves; a folds all.
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input, TextView } from "gpui-base";
 import { run, theme, shared, setShared, nextCommand, exec, hc, home, terminals, notify, focused } from "herdr";
@@ -24,6 +24,8 @@ const dictate = (e, cx, box, single = true) => {
 const ID_RE = /^\d{8}-\d{6}-[0-9a-f]{6}$/, HASH_RE = /^[0-9a-f]{64}$/;
 const clean = (s, max = 6000) => String(s ?? "").replace(/\r/g, "").replace(/\t/g, "  ").replace(/[\u0000-\u0009\u000b-\u001f\u007f-\u009f​-‏‪-‮⁦-⁩﻿]/g, "").slice(0, max);
 const keyChip = (text, t) => div().px(6).h(18).min_w(18).flex().items_center().justify_center().flex_none().rounded(5).border_1().border_color(t.input ?? t.border).bg(t.raised).text_size(11).font_medium().text_color(t.muted).child(text);
+// Same split as the git window: the "## Proposed text" block is what would be posted; everything above it is rev's notes.
+const proposedText = (md) => { const m = /^##\s+Proposed text[^\n]*\n([\s\S]*?)(?=^##\s|$(?![\s\S]))/im.exec(md || ""); return m ? m[1].trim().replace(/(?<!\n)\n(?!\n|\s*[-*] )/g, " ") : ""; };
 const keyHints = (text, t) => h_flex().gap(14).items_center().min_w(0).overflow_hidden().children(text.split(" · ").map((seg) => {
   const w = seg.split(" "); let n = 1;
   while (n < w.length && /^[A-Z]$/.test(w[n])) n++;
@@ -131,7 +133,7 @@ export default class InboxPanel extends View {
     this.devs = null; this.armed = null; this.scanDevs(cx); cx.timer.every(8000, (cx) => this.scanDevs(cx));
     this.folded = loadFolded(); AUTO_FOLD.forEach((k) => this.folded.add(k)); this.devOpenAt = 0;
     this.jobs = null; this.loadJobs(cx); cx.timer.every(60000, (cx) => this.loadJobs(cx));
-    this.det = null; this.marks = new Map(); this.confirm = false; this.running = false; this.results = null; this.pauseUntil = 0;
+    this.dv = null; this.draftFiles = new Map(); this.det = null; this.marks = new Map(); this.confirm = false; this.running = false; this.results = null; this.pauseUntil = 0;
      /* dev servers start collapsed */ this.sel = null; this.handle = cx.focus_handle();
     cx.spawn(async (cx) => { for (;;) { const c = await nextCommand(); if (c === "focus") { this.handle.focus(); cx.timer.after(150, (cx) => { this.handle.focus(); cx.notify(); }); /* a panel that was just shown may not be in the focus tree yet: take it again */ if (!this.sel) this.sel = this.items()[0]?.id ?? null; cx.notify(); } } });
     if (!this.inb || Date.now() - this.inb.at > 45000) setShared("inbox-ask", Date.now());
@@ -156,8 +158,9 @@ export default class InboxPanel extends View {
       try {
         const r = await exec("sh", ["-c", 'ls "$HOME"/workspace/rev/docs/ 2>/dev/null'], { on: REV_HOST });
         if (r.code !== 0) return;
-        const set = new Set();
-        for (const f of r.stdout.split("\n")) { const m = /^\d{4}-\d{2}-\d{2}-(.+)-(\d+)-review\.md$/.exec(f.trim()); if (m) set.add(m[1] + "#" + m[2]); }
+        const set = new Set(), files = new Map();
+        for (const f of r.stdout.split("\n").map((x) => x.trim()).sort()) { const m = /^\d{4}-\d{2}-\d{2}-(.+)-(\d+)-review\.md$/.exec(f); if (m) { set.add(m[1] + "#" + m[2]); files.set(m[1] + "#" + m[2], f); } }
+        this.draftFiles = files;
         try {
           const l = await hc(["exec", "sh", "-c", 'find "$HOME/workspace" "$HOME/repos" -maxdepth 8 -path "*/docs/drafts/*-pr-*.md" 2>/dev/null']);
           if (l.code === 0) for (const f of l.stdout.split("\n")) { const m = /^(.+)-pr-(\d+)\.md$/.exec(f.trim().split("/").pop()); if (m) set.add(m[1] + "#" + m[2]); }
@@ -294,6 +297,11 @@ export default class InboxPanel extends View {
     notify({ title: `Tunnel :${x.id} opened in a tab`, body: `Browse http://localhost:${x.id}. Close that tab to end it.`, level: "info" });
   }
 
+  // A PR with a queued review or comment shows once, as its approval row (the action that is left); the PR row hides meanwhile.
+  prKey(repo, n) { return `${String(repo ?? "").toLowerCase()}#${n}`; }
+  queuedPrs() { const q = shared("broker")?.queue ?? []; return new Set(q.filter((x) => (x.kind === "review" || x.kind === "comment") && x.pr).map((x) => this.prKey(x.repo, x.pr))); }
+  prFor(repo, n) { const i = this.inb; if (!i) return null; return [...(i.review ?? []), ...(i.waiting ?? []), ...(i.mine ?? [])].find((d) => this.prKey(d.repo, d.n) === this.prKey(repo, n)) ?? null; }
+
   // Flat list of what is on screen: one header per thing (so far: Pull requests), then its rows unless folded.
   items() {
     const out = [];
@@ -303,7 +311,8 @@ export default class InboxPanel extends View {
     if (bk) push("appr", "Approvals", bk.queue.length, [["pending", bk.queue.length]].filter(([, c]) => c), [...bk.queue.map((q) => ({ id: "q:" + q.id, key: "appr", kind: "appr", q })), ], false);
     if (inb) {
       const s = sections(inb);
-      const cats = [["fix", s.fix], ["review", s.toReview], ["rerev", s.rerev], ["talk", s.talk], ["ready", s.ready]];
+      const hide = this.queuedPrs(), vis = (l) => l.filter((d) => !hide.has(this.prKey(d.repo, d.n)));
+      const cats = [["fix", vis(s.fix)], ["review", vis(s.toReview)], ["rerev", vis(s.rerev)], ["talk", vis(s.talk)], ["ready", vis(s.ready)]];
       const n = cats.reduce((a, [, l]) => a + l.length, 0);
       push("prs", "Pull requests", n, cats.filter(([, l]) => l.length).map(([k, l]) => [k, l.length]), cats.flatMap(([cat, list]) => list.map((d) => ({ id: "r:" + d.url, key: "prs", kind: "pr", cat, d }))));
     }
@@ -314,7 +323,7 @@ export default class InboxPanel extends View {
       if (this.tasks.length > MAX_TASKS && !this.folded.has("tasks")) out.push({ id: "m:tasks", key: "tasks", kind: "more", text: `+${this.tasks.length - MAX_TASKS} more in Memo` });
     }
     if (inb) {
-      const w = sections(inb).wait;
+      const hideW = this.queuedPrs(), w = sections(inb).wait.filter((d) => !hideW.has(this.prKey(d.repo, d.n)));
       push("wait", "Waiting on others", w.length, [["wait", w.length]], w.map((d) => ({ id: "w:" + d.url, key: "wait", kind: "pr", cat: "wait", d })));
     }
     if (this.jobs?.length) push("sched", "Schedules", this.jobs.length, [["on", this.jobs.filter((j) => j.enabled).length]].filter(([, c]) => c), this.jobs.map((j) => ({ id: "j:" + j.name, key: "sched", kind: "job", j })));
@@ -355,6 +364,7 @@ export default class InboxPanel extends View {
 
   key(e, cx) {
     const k = e.key, items = this.det ? [] : this.items();
+    if (this.dv) return this.dvKey(e, cx);
     if (this.det) return this.detKey(e, cx);
     if (this.adding && dictate(e, cx, this.addState)) return;
     if (this.adding) { if (k === "escape") this.endAdd(cx); else if (k === "tab") this.cycleCal(cx); else return; cx.stop_propagation(); return; }
@@ -430,6 +440,49 @@ export default class InboxPanel extends View {
     this.marks.set(q.id, { act, hash: q.hash }); this.results = null;
     if (act === "a") { this.confirm = false; this.runDecide(cx); } else this.confirm = true; // approve sends at once (the key dialog on tm-serve is the safeguard); reject asks first
     cx.notify();
+  }
+
+  // A Rev draft for a PR: Enter on a drafted row reads it here (tm-serve ~/workspace/rev/docs) instead of opening the git window.
+  // Read-only: queuing stays with Rev after tm's go in its session; the queued review then shows up as an approval row here.
+  openDraft(d, file) {
+    if (!/^[\w.-]+\/[\w.-]+$/.test(d.repo) || !/^\d+$/.test(String(d.n)) || !/^[\w.-]+\.md$/.test(file)) return this.open(d);
+    const dv = (this.dv = { d, file, text: "", loading: true, err: "", busy: false });
+    this.cxRef.notify();
+    exec("sh", ["-c", `cat "$HOME/workspace/rev/docs/${file}"`], { on: REV_HOST, timeout: 30000 })
+      .then((r) => { if (this.dv !== dv) return; if (r.code !== 0) dv.err = "could not read the draft"; else dv.text = clean(r.stdout, 40000); })
+      .catch((e) => { if (this.dv === dv) dv.err = clean(e.message ?? e, 160); })
+      .then(() => { if (this.dv === dv) dv.loading = false; this.cxRef.notify(); });
+  }
+
+  draftMode() { const m = /Verdict\W*\s*(\w+)/i.exec((this.dv?.text ?? "").split(/^##\s/m)[0]); return m && m[1].toLowerCase() === "approve" ? "--approve" : "--comment"; }
+
+  closeDraft() { this.dv = null; this.handle.focus(); this.cxRef.notify(); }
+
+  dvKey(e, cx) {
+    const k = e.key;
+    if (e.modifiers?.alt && ["h", "j", "k", "l"].includes(k)) { leavePanel({ h: "left", j: "down", k: "up", l: "right" }[k]); cx.timer.after(150, (cx) => cx.notify()); cx.stop_propagation(); return; }
+    if (k === "escape" || k === "backspace") this.closeDraft();
+    else if (k === "g") { const d = this.dv.d; this.dv = null; this.open(d); }
+    else return;
+    cx.stop_propagation(); cx.notify();
+  }
+
+  renderDv(t, focused) {
+    const v = this.dv, mode = this.draftMode().replace(/^--/, "");
+    const section = (title) => div().px(2).pt(6).text_size(12).font_semibold().text_color(t.muted).child(title.toUpperCase());
+    const mdv = (id, txt) => TextView.markdown(id, clean(txt, 40000).replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/<[^>]*>/g, "")).on_link_click(() => {}).selectable(true).text_size(12).text_color(t.foreground);
+    const pi = v.text.search(/^##\s+Proposed text/im), post = proposedText(v.text), notes = pi >= 0 ? v.text.slice(0, pi).trimEnd() : v.text;
+    const kids = v.loading ? [div().p(8).text_size(12).text_color(t.dim).child("Loading…")]
+      : v.err && !v.text ? [div().p(8).text_size(12).text_color(t.blocked).child(v.err)]
+      : [...(post ? [section("Will be posted"), v_flex().id("inb-draft-post").p(12).rounded(7).border_1().border_color(t.accent).child(mdv("inb-draft-post-" + v.file, post))] : []),
+         ...(notes ? [section("Draft from rev · notes"), mdv("inb-draft-notes-" + v.file, notes)] : [])];
+    return v_flex().id("inbox-panel").track_focus(this.handle).on_key_down((e, cx) => this.key(e, cx)).size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(focused ? t.accent : t.border).text_color(t.foreground)
+      .child(h_flex().h(30).flex_none().px(12).gap(8).items_center().border_b(1).border_color(t.border)
+        .child(div().flex_none().text_size(12).font_medium().text_color(t.accent).child("Draft review"))
+        .child(div().flex_1().min_w(0).truncate().text_size(12).text_color(t.muted).child(`${v.d.repo.split("/")[1] ?? v.d.repo}#${v.d.n}`))
+        .child(div().flex_none().text_size(11).text_color(t.dim).child(/Verdict/i.test((v.text ?? "").split(/^##\s/m)[0]) ? "verdict: " + mode : "")))
+      .child(v_flex().id("inbox-draft-body").flex_1().min_h(0).overflow_y_scrollbar().p(12).gap(10).children(kids))
+      .child(div().flex_none().min_h(30).px(10).py(4).flex().items_center().border_t(1).border_color(t.border).child(keyHints("g open in Git · Esc back", t)));
   }
 
   closeDetail() { this.det = null; this.marks.clear(); this.confirm = false; this.results = null; this.handle.focus(); }
@@ -529,7 +582,7 @@ export default class InboxPanel extends View {
   after150(cmd) { this.cxRef?.timer.after(150, () => run(cmd)); }
 
   activate(it) {
-    if (it.kind === "pr") this.open(it.d);
+    if (it.kind === "pr") { const f = this.draftFiles.get(`${(it.d.repo.split("/")[1] ?? it.d.repo)}#${it.d.n}`); if (f && it.cat === "review" && !it.d.my) this.openDraft(it.d, f); else this.open(it.d); }
     else if (it.kind === "appr") this.openDetail(it.q.id);
     else if (it.kind === "health") setShared("broker-ask", Date.now());
     else if (it.kind === "srv") this.tunnel(it.x);
@@ -553,8 +606,10 @@ export default class InboxPanel extends View {
 
   render(cx) {
     const t = theme(), inb = this.inb, s = inb ? sections(inb) : null, focused = this.handle.is_focused();
+    if (this.dv) return this.renderDv(t, focused);
     if (this.det) return this.renderDet(t, focused);
-    const total = s ? s.fix.length + s.toReview.length + s.rerev.length + s.talk.length + s.ready.length : 0;
+    const hideQ = this.queuedPrs(), vis = (l) => l.filter((d) => !hideQ.has(this.prKey(d.repo, d.n)));
+    const total = s ? vis(s.fix).length + vis(s.toReview).length + vis(s.rerev).length + vis(s.talk).length + vis(s.ready).length : 0;
     const lateN = (this.tasks ?? []).filter((k) => k.due && k.due.slice(0, 10) <= ymd(new Date())).length;
     const iconBtn = (id, text, onClick) => div().id(id).w(24).h(24).flex().items_center().justify_center().flex_none().rounded(6).cursor_pointer().text_size(13).text_color(t.muted).hover((x) => x.bg(t.hover)).on_click(onClick).child(text);
     const chip = (text, color) => div().flex_none().h(16).px(6).flex().items_center().rounded(5).border_1().border_color(t.border).text_size(11).text_color(color).child(text);
@@ -564,7 +619,7 @@ export default class InboxPanel extends View {
     const row = (it) => {
       const d = it.d, short = d.repo.split("/")[1] ?? d.repo, fresh = d.act > seenAt(d), on = focused && this.sel === it.id, tail = tailOf[it.cat]?.(d);
       return v_flex().id(it.id).flex_none().px(10).py(5).gap(2).rounded(7).cursor_pointer().bg(on ? t.selected : t.background).hover((x) => x.bg(on ? t.selected : t.hover))
-        .on_click(() => this.open(d))
+        .on_click(() => this.activate(it))
         .child(h_flex().gap(6).items_center().min_w(0)
           .child(div().flex_none().text_size(11).text_color(t.accent).child(`${short} #${d.n}`))
           .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(t.dim).child(d.author)))
@@ -639,13 +694,16 @@ export default class InboxPanel extends View {
         .child(div().min_w(0).truncate().text_size(11).text_color(t.dim).child(`stopped · ${(b.folder ?? "").replace(/^\/home\/[^/]+/, "~")}`));
     };
     const arow = (it) => {
-      const q = it.q, on = focused && this.sel === it.id, where = (q.repo ?? "").split("/").pop() + (q.pr ? ` #${q.pr}` : q.branch ? ` ${q.branch}` : "");
+      const q = it.q, on = focused && this.sel === it.id, pr = q.pr ? this.prFor(q.repo, q.pr) : null;
+      const where = (q.repo ?? "").split("/").pop() + (q.pr ? ` #${q.pr}` : q.branch ? ` ${q.branch}` : "");
       return v_flex().id(it.id).flex_none().px(10).py(5).gap(2).rounded(7).cursor_pointer().bg(on ? t.selected : t.background).hover((x) => x.bg(on ? t.selected : t.hover))
         .on_click(() => this.activate(it))
-        .child(div().min_w(0).truncate().text_color(on ? t.foreground : t.muted).child(q.title || `${q.kind} ${where}`))
         .child(h_flex().gap(6).items_center().min_w(0)
+          .child(div().min_w(0).truncate().text_size(11).text_color(t.accent).child(where))
+          .when(Boolean(pr?.author), (el) => el.child(div().flex_1().min_w(0).truncate().text_size(11).text_color(t.dim).child(pr.author))))
+        .child(div().min_w(0).truncate().text_color(on ? t.foreground : t.muted).child(q.title || pr?.title || `${q.kind} request`))
+        .child(h_flex().gap(5).items_center().min_w(0)
           .child(chip(q.kind + (q.mode ? " " + q.mode.replace(/^--/, "") : ""), t.blocked))
-          .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(t.accent).child(where))
           .child(chip(String(q.id).slice(-6), t.dim))
           .child(chip(age(new Date(q.at).toISOString()), t.dim)));
     };
@@ -685,6 +743,6 @@ export default class InboxPanel extends View {
         .when(Boolean(s) && s.covered > 0, (el) => el.child(div().px(10).pt(10).text_size(11).text_color(t.dim).child(`${s.covered} more already approved by others`)))
         .when(Boolean(this.err && s), (el) => el.child(div().px(10).pt(8).text_size(11).text_color(t.blocked).child(this.err))))
       .when(items.some((it) => PINNED.includes(it.key)) || Boolean(bkNow), (el) => el.child(v_flex().id("inbox-pinned").flex_none().h(pinH).when(pinCapped, (e) => e.overflow_y_scrollbar()).when(!pinCapped, (e) => e.overflow_hidden()).px(8).pb(6).pt(2).gap(1).border_t(1).border_color(t.border).children([...items.filter((it) => PINNED.includes(it.key)).map(draw), ...(bkNow ? [hrow({ id: "k:health", bk: bkNow })] : [])])))
-      .child(div().flex_none().h(26).px(14).flex().items_center().border_t(1).border_color(focused ? t.border : t.background).truncate().text_size(11).text_color(t.dim).child(focused ? "j k move (wraps) · g G first / last · ← → fold · a fold all · Enter open (approval: detail · schedule: manage) · n new task · x tick · d delete task · s stop · t tunnel (tm-serve) · e servers · r restart / start (server) or refresh · Esc leave" : ""));
+      .child(div().flex_none().h(26).px(14).flex().items_center().border_t(1).border_color(focused ? t.border : t.background).truncate().text_size(11).text_color(t.dim).child(focused ? "Alt+L Files · Alt+H leave · j k move · ← → fold · a fold all · g G ends · Enter open (approval: detail · schedule: manage) · n new task · x tick · d delete task · s stop · t tunnel (tm-serve) · e servers · r restart / start (server) or refresh · Esc leave" : ""));
   }
 }
