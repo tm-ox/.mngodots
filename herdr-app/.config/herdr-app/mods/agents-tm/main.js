@@ -303,6 +303,9 @@ export default class Agents extends View {
           .child(div().flex_1().min_w(0).whitespace_nowrap().text_right().text_color(t.muted).child(String(i + 1)))
           .child(h_flex().w(14).flex_none().items_center().justify_center().child(this.status(t, a, true)));
       }
+      // What fits depends on the sidebar's width: name, age and status always; the branch from 230 px; the machine name
+      // only where no space header says it (priority, pinned) and from 270 px. Nothing may push past the row.
+      const sw = find(layout(), "sidebar")?.size?.px ?? 268;
       const when = this.since(a);
       const idle = a.status === "idle" && !a.focused;
       const isPinned = this.pins.includes(a.address);
@@ -351,10 +354,10 @@ export default class Agents extends View {
             cx.notify();
           })).child(pic)))
         .child(h_flex().flex_1().min_w(0).gap(5).items_center()
-          .child(div().flex_none().max_w(full && more ? 120 : 200).truncate().text_color(idle ? t.muted : t.foreground).child(name))
+          .child(div().min_w(0).max_w(full && more ? 120 : 200).truncate().text_color(idle ? t.muted : t.foreground).child(name))
           .when(full && Boolean(more), el => el.child(div().flex_1().min_w(0).truncate().text_color(t.dim).child(`\u00b7 ${more}`))))
-        .when(Boolean(branch), el => el.child(div().flex_none().max_w(96).truncate().text_size(10.5).text_color(t.dim).child(branch)))
-        .when(Boolean(machine), el => el.child(div().text_size(10).text_color(t.dim).child(machine)))
+        .when(Boolean(branch) && sw >= 230, el => el.child(div().flex_shrink(3).min_w(0).max_w(sw >= 300 ? 110 : 70).truncate().text_size(10.5).text_color(t.dim).child(branch)))
+        .when(Boolean(machine) && full && sw >= 270, el => el.child(div().flex_none().text_size(10).text_color(t.dim).child(machine)))
         .when(subs.length > 0, el => el.child(fold(a, subs)))
         .when(this.hovered === a.address, el => el.child(pin))
         .when(this.hovered !== a.address && Boolean(when), el => el.child(div().flex_none().text_size(11).text_color(t.dim).child(duration(now - when))))

@@ -42,6 +42,7 @@ const HELP = [
     ["PgUp · PgDn", "Scroll the preview a page."],
     ["Ctrl+L · Tab", "Move the keyboard to the preview."],
     ["Ctrl+E", "Markdown files: toggle rendered and raw preview."],
+    ["Ctrl+Y", "Files: copy the whole highlighted text file to the clipboard."],
     ["Esc", "Close."],
   ]],
   ["Preview", [
@@ -57,6 +58,7 @@ const HELP = [
     ["Ctrl+T", "Open in a new tab."],
     ["o · Ctrl+O", "Open with the other app (see Ctrl+O in Search)."],
     ["e", "Markdown files: toggle rendered and raw preview."],
+    ["y · Ctrl+Y", "Copy the whole file (not just the preview) to the clipboard."],
   ]],
   ["Dirs preview", [
     ["Ctrl+L", "In Dirs mode, the preview is a folder listing you can browse."],
@@ -110,6 +112,7 @@ export default class FileFind extends View {
     this.pfocus = false; // keyboard on the preview: j/k scroll
     this.raw = false;
     this.helpOpen = false;
+    this.flash = "";
     // Where the focused terminal lives: a server space (or a server agent terminal) runs every command there (--on), not here.
     const sp = spaces().find((s) => s.active), f = focused(), pn = f?.pane ? panes().find((p) => p.pane === f.pane) : null;
     this.on = f?.pane === null ? (f.terminal?.includes("/") ? f.terminal.split("/")[0] : null) : sp?.machine ?? null;
@@ -278,6 +281,23 @@ export default class FileFind extends View {
     this.pvOff = Math.max(0, Math.min(this.maxOff(), this.pvOff + n));
   }
 
+  // Copy the whole highlighted text file (not just the 1000-line preview) to the clipboard.
+  copyFile(cx) {
+    const item = this.rows[this.at];
+    const say = (m) => { this.flash = m; cx.notify(); cx.timer.after(2500, () => { if (this.flash === m) { this.flash = ""; cx.notify(); } }); };
+    if (!item || this.mode !== "files") return say("copy: files only");
+    if (isExternal(item.split("/").pop(), false)) return say("copy: not a text file");
+    const path = `${this.base()}/${item}`;
+    cx.spawn(async (cx) => {
+      let text = null;
+      try { text = await readTextFile(path, { on: this.on }); } catch {}
+      if (text === null || text === undefined) return say("copy: unreadable or too large");
+      if (text.includes("\0")) return say("copy: binary file");
+      cx.write_to_clipboard(text);
+      say(`copied ${item.split("/").pop()} (${text.split("\n").length} lines)`);
+    });
+  }
+
   open(tab, alt) {
     const item = this.rows[this.at];
     if (!item) return;
@@ -314,7 +334,7 @@ export default class FileFind extends View {
       : this.pfocus ? (pv.md ? "e raw" : "")
       : browsing ? "Ctrl+L browse folder"
       : pv.md && !this.raw ? "Ctrl+L preview · Ctrl+E raw" : "Ctrl+L preview" + (pv.md ? " · Ctrl+E raw" : "");
-    const topHint = this.helpOpen ? "" : this.mode === "dirs" ? "Enter shell · Ctrl+T tab" : "Enter split · Ctrl+T tab · Ctrl+O other app";
+    const topHint = this.helpOpen ? "" : this.mode === "dirs" ? "Enter shell · Ctrl+T tab" : "Enter split · Ctrl+T tab · Ctrl+Y copy · Ctrl+O other app";
     const caption = (text) => div().text_size(10).font_medium().text_color(t.accent).child(text.toUpperCase());
     return v_flex()
       .id("file-find")
@@ -355,6 +375,7 @@ export default class FileFind extends View {
           else if (k === "home") this.pvOff = 0;
           else if (k === "G" || (k === "g" && shift) || k === "end") this.pvOff = 1e9;
           else if (k === "e") this.raw = !this.raw;
+          else if (k === "y" || (ctrl && k === "y")) this.copyFile(cx);
           else if (k === "enter") this.open(false);
           else if (ctrl && k === "t") this.open(true);
           else if ((ctrl && k === "o") || k === "o") this.open(false, true);
@@ -369,6 +390,7 @@ export default class FileFind extends View {
         else if (k === "pagedown") this.scrollPv(PV_PAGE);
         else if (k === "pageup") this.scrollPv(-PV_PAGE);
         else if (ctrl && k === "e") this.raw = !this.raw;
+        else if (ctrl && k === "y") this.copyFile(cx);
         else if (ctrl && k === "t") this.open(true);
         else if (ctrl && k === "o") this.open(false, true);
         else if (ctrl && (k === "d" || k === "f")) {
@@ -412,7 +434,7 @@ export default class FileFind extends View {
             h_flex().gap(12).items_center()
               .child(div().w(440).flex_shrink(0).text_size(11).text_color(t.dim).child(`${rows.length}${rows.length >= MAX_SHOWN ? "+" : ""} ${this.mode === "files" ? "files" : "dirs"}`))
               .child(div().flex_1().min_w(0).truncate().text_size(11).text_color(t.muted).child((rows[this.at] ?? "") + (this.mode === "dirs" ? this.dsub : "")))
-              .child(keyHints(hint, t)),
+              .child(this.flash ? div().text_size(11).text_color(t.accent).child(this.flash) : keyHints(hint, t)),
           )
       .child(
         h_flex().flex_1().min_h(0).gap(12).items_stretch()

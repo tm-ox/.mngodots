@@ -66,6 +66,8 @@ export default class PanelKeys extends View {
           cx.notify();
           continue;
         }
+        // Ctrl+Shift+S: the Inbox's Dev servers view : shows the panel on the Inbox tab, unfolds Dev servers and selects its header.
+        if (c === "devs") { const id = ids.find((x) => modOf(x) === "inbox-tm"); if (!id) continue; run("layout.select", { stack: STACK, child: id }); run("layout.show", { id: "panel" }); stamp = Date.now(); ++token; run("inbox-tm.devs"); cx.notify(); continue; }
         // Ctrl+Shift+Q: widen the panel (WIDE px) or back to the width it had before (NARROW px if unknown); opens the panel first if hidden. layout.resize needs size within min/max (280..1100).
         if (c === "wide") { const w = panel?.size?.px ?? NARROW, isWide = w >= WIDE - 20; if (!isWide) before = w; if (!visible) run("layout.show", { id: "panel" }); run("layout.resize", { id: "panel", px: isWide ? before : WIDE }); cx.notify(); continue; }
         if (c === "toggle") { if (visible) run("layout.hide", { id: "panel" }); else open(active); }

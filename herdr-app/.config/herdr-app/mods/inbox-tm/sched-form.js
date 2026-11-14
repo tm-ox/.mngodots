@@ -1,20 +1,17 @@
-// Schedules: side panel for the jobs in `hcron` on tm-serve (cron underneath). List with on/off switch and run-now;
-// click a job (or +) for the form: days, time, agent prompt or command, folder; history with output.
-// Everything goes through `hcron` run on the tm-serve machine; the panel writes no file itself.
-import { View, div, svg } from "gpui-kit";
+// Schedule editor for the Inbox panel: replaces the list until Esc (like the approval and draft views). Days, times, agent prompt or
+// command, folder, note, cron preview and run history with output. Everything goes through `hcron` on tm-serve; nothing is written
+// locally. Derived from the sched-tm side panel. The host (main.js) keeps the job list and the toggle / run-now keys.
+import { div } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input, TextareaState, Textarea } from "gpui-base";
-import { exec, theme, notify, pickFolder, home, run, nextCommand, setShared, focused } from "herdr";
+import { exec, notify, pickFolder } from "herdr";
+import { leavePanel } from "./lib.js";
 
-// Leave a side panel. A panel focused by handle.focus() (keys, toggle) leaves the host's focus context on the terminal pane it
-// came from, so pane.go left would be relative to that pane and do nothing: focus that pane directly. When the host itself
-// moved onto the panel (pane.go), `focused().pane` is null and pane.go works as usual.
-const leavePanel = (direction) => { const f = focused(); if (direction === "left" && f?.pane) run("pane.focus", { pane: f.pane }); else run("pane.go", { direction }); };
 const HOST = "tm-serve";
 const DAYS = [["Mon", 1], ["Tue", 2], ["Wed", 3], ["Thu", 4], ["Fri", 5], ["Sat", 6], ["Sun", 0]];
 const MODELS = ["haiku", "sonnet", "opus"];
 const pad = (n) => String(n).padStart(2, "0");
 
-async function hcron(args) {
+export async function hcron(args) {
   const r = await exec("sh", ["-c", '"$HOME/.local/bin/hcron" "$@"', "hcron", ...args], { on: HOST, timeout: 20000 });
   if (r.code !== 0) throw new Error((r.stderr || r.stdout || "hcron failed").trim().split("\n").pop());
   return r.stdout.trim() ? JSON.parse(r.stdout) : null;
@@ -51,14 +48,14 @@ function parseOne(cron) {
   }
   return { min: Number(f[0]), hour: Number(f[1]), days };
 }
-function human(cron) {
+export function human(cron) {
   const s = parseSimple(cron);
   if (!s) return cron;
   const d = s.days.size === 7 ? "Every day" : [...s.days].sort().join() === "1,2,3,4,5" ? "Weekdays" : [...s.days].sort().join() === "0,6" ? "Weekends"
     : DAYS.filter(([, n]) => s.days.has(n)).map(([l]) => l).join(" ");
   return `${d} ${s.times.map(([h, m]) => pad(h) + ":" + pad(m)).join(", ")}`;
 }
-function when(ts) {
+export function when(ts) {
   const d = new Date(ts * 1000), now = new Date(), diff = (d - now) / 1000;
   if (diff < 0) return "due";
   if (diff < 3600) return `in ${Math.max(1, Math.round(diff / 60))}m`;
@@ -71,38 +68,39 @@ function ago(ts) {
 }
 const stamp = (ts) => { const d = new Date(ts * 1000); return `${["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d.getDay()]} ${pad(d.getHours())}:${pad(d.getMinutes())}`; };
 
-export default class Sched extends View {
-  init(_props, cx) {
-    this.jobs = null; this.error = null; this.view = "list"; this.form = null; this.busy = false; this.confirm = false;
-    this.sel = null; this.handle = cx.focus_handle(); this.wasFocused = false;
-    cx.spawn(async (cx) => { for (;;) { const c = await nextCommand(); if (c === "focus") { this.handle.focus(); cx.timer.after(150, (cx) => { this.handle.focus(); cx.notify(); }); /* a panel that was just shown may not be in the focus tree yet: take it again */ if (!this.sel) this.sel = this.jobs?.[0]?.name ?? null; cx.notify(); } } });
-    cx.timer.every(250, (cx) => { const f = this.handle.is_focused(); if (f !== this.wasFocused) { this.wasFocused = f; setShared("pf:sched-tm", f); cx.notify(); } });
-    this.refresh(cx);
-    cx.timer.every(30000, (cx) => { if (this.view === "list") this.refresh(cx); });
-  }
-
-  refresh(cx) {
-    if (this.loading) return;
-    this.loading = true;
-    cx.spawn(async (cx) => {
-      try { this.jobs = await hcron(["list"]); this.error = null; }
-      catch (e) { this.error = String(e.message ?? e); }
-      finally { this.loading = false; cx.notify(); }
-    });
-  }
+export class SchedView {
+  constructor(host) { this.host = host; this.form = null; this.busy = false; this.confirm = false; }
 
   act(args, cx, done) {
     if (this.busy) return;
     this.busy = true; cx.notify();
     cx.spawn(async (cx) => {
-      try { const r = await hcron(args); this.jobs = await hcron(["list"]); this.error = null; done?.(r); }
+      try { const r = await hcron(args); this.host.loadJobs(cx); done?.(r); }
       catch (e) { notify({ title: "Schedules", body: String(e.message ?? e), level: "error" }); }
       finally { this.busy = false; cx.notify(); }
     });
   }
 
-  // ----- form -----
-  openForm(job, cx) {
+  close(cx) { this.form = null; this.host.schedv = null; this.host.handle.focus(); this.host.loadJobs(cx); cx.notify(); }
+
+  // The form's fields own the keyboard; only Esc and the Alt+HJKL leave keys are handled here.
+  key(e, cx) {
+    const k = e.key;
+    if (e.modifiers?.alt && ["h", "j", "k", "l"].includes(k)) { leavePanel({ h: "left", j: "down", k: "up", l: "right" }[k]); cx.timer.after(150, (cx) => cx.notify()); cx.stop_propagation(); return; }
+    if (k === "escape") { this.close(cx); cx.stop_propagation(); }
+  }
+
+  render(t, focused, cx) {
+    const f = this.form;
+    return v_flex().id("inbox-panel").track_focus(this.host.handle).on_key_down((e, cx) => this.host.key(e, cx)).size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(focused ? t.accent : t.border).text_color(t.foreground).text_size(13)
+      .child(h_flex().h(30).flex_none().px(14).gap(8).items_center().border_b(1).border_color(t.border)
+        .child(div().id("sched-back").w(20).cursor_pointer().text_color(t.muted).on_click((_e, cx) => this.close(cx)).child("←"))
+        .child(div().font_semibold().child(f.isNew ? "New schedule" : f.job.name))
+        .child(div().flex_1().min_w(0).truncate().text_right().text_size(11).text_color(t.dim).child("Esc back")))
+      .child(this.formView(t, cx));
+  }
+
+  open(job, cx) {
     const simple = job ? parseSimple(job.cron) : { times: [[6, 0]], days: new Set(DAYS.map(([, n]) => n)) };
     const mk = (placeholder, value) => InputState.new({ placeholder, value: value ?? "" });
     const f = {
@@ -114,7 +112,7 @@ export default class Sched extends View {
       preview: null, hist: null, openLog: null, logText: null, err: null,
     };
     f.cron.on("change", (_e, cx) => this.updatePreview(cx));
-    this.form = f; this.view = "form"; this.confirm = false;
+    this.form = f; this.confirm = false;
     this.updatePreview(cx);
     if (job) this.loadHistory(cx);
     cx.notify();
@@ -181,67 +179,7 @@ export default class Sched extends View {
     const common = ["--cron", cron, ...(agent ? ["--prompt", prompt, "--model", f.model] : ["--cmd", cmd])];
     if (f.isNew) args.push("add", name, ...common, ...(cwd ? ["--cwd", cwd] : []), ...(note ? ["--note", note] : []));
     else args.push("edit", f.job.name, ...common, "--cwd", cwd, "--note", note);
-    this.act(args, cx, () => { this.view = "list"; this.form = null; this.refocus(cx); });
-  }
-
-  // ----- views -----
-  // The form's fields own the keyboard; when the list comes back, take it again so the next Esc leaves the panel.
-  refocus(cx) { cx.timer.after(60, (cx) => { this.handle.focus(); if (!this.sel) this.sel = this.jobs?.[0]?.name ?? null; cx.notify(); }); }
-
-  toInbox(cx) { run("layout.select", { stack: "panel-body", child: "inbox" }); cx.timer.after(150, () => run("inbox-tm.focus")); }
-
-  // Same keys as the Inbox panel: j/k move, Enter opens, Esc / Alt+H J K L leave. List view only; the form uses its own fields.
-  key(e, cx) {
-    const k = e.key, jobs = this.jobs ?? [];
-    if (e.modifiers?.alt && ["h", "j", "k", "l"].includes(k)) { leavePanel({ h: "left", j: "down", k: "up", l: "right" }[k]); cx.timer.after(150, (cx) => cx.notify()); cx.stop_propagation(); return; }
-    if (this.view === "form") { if (k === "escape") { this.view = "list"; this.form = null; this.refresh(cx); this.refocus(cx); cx.notify(); cx.stop_propagation(); } return; }
-    let i = jobs.findIndex((j) => j.name === this.sel); if (i < 0) i = 0;
-    const cur = jobs[i];
-    if (k === "escape" || k === "left" || k === "h") this.toInbox(cx); // tiers: form -> list -> Inbox -> (Inbox Esc) leaves the panel
-    else if (k === "down" || k === "j") this.sel = jobs[Math.min(jobs.length - 1, i + 1)]?.name ?? null;
-    else if (k === "up" || k === "k") this.sel = jobs[Math.max(0, i - 1)]?.name ?? null;
-    else if ((k === "enter" || k === "right" || k === "l") && cur) this.openForm(cur, cx);
-    else if (k === "space" && cur) this.act([cur.enabled ? "disable" : "enable", cur.name], cx);
-    else if (k === "r" && cur) this.act(["run", cur.name], cx, () => { notify({ title: "Schedules", body: `${cur.name} started`, level: "info" }); cx.timer.after(8000, (cx) => this.refresh(cx)); });
-    else if (k === "n") this.openForm(null, cx);
-    else return;
-    cx.stop_propagation(); cx.notify();
-  }
-
-  render(cx) {
-    const t = theme(), focused = this.handle.is_focused();
-    const iconBtn = (id, child, onClick, tip) => div().id(id).w(24).h(24).flex().items_center().justify_center().flex_none().rounded(6).cursor_pointer().text_size(13).text_color(t.muted).hover((s) => s.bg(t.hover)).on_click(onClick).child(child);
-    const form = this.view === "form" && this.form;
-    return v_flex().id("sched").track_focus(this.handle).on_key_down((e, cx) => this.key(e, cx)).size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(focused ? t.accent : t.border).text_color(t.foreground).text_size(13)
-      .child(h_flex().h(30).flex_none().px(14).gap(8).items_center().border_b(1).border_color(t.border)
-        .child(div().id("sched-back").w(20).cursor_pointer().text_color(t.muted).on_click((_e, cx) => { if (form) { this.view = "list"; this.form = null; this.refresh(cx); this.refocus(cx); cx.notify(); } else { run("layout.select", { stack: "panel-body", child: "inbox" }); cx.timer.after(150, () => run("inbox-tm.focus")); } }).child("←"))
-        .child(div().font_semibold().child(form ? (form.isNew ? "New schedule" : form.job.name) : "Schedules"))
-        .child(div().flex_1().min_w(0).truncate().text_right().text_size(12).text_color(t.dim).child(form ? "" : this.jobs ? `${this.jobs.filter((j) => j.enabled).length} of ${this.jobs.length} on` : ""))
-        .when(!form, (el) => el.child(iconBtn("sched-new", "+", (_e, cx) => this.openForm(null, cx)))
-          .child(iconBtn("sched-refresh", "↻", (_e, cx) => this.refresh(cx)))))
-      .child(form ? this.formView(t, cx) : this.listView(t, cx))
-      .when(focused && !form, (el) => el.child(div().flex_none().px(14).py(6).border_t(1).border_color(t.border).truncate().text_size(11).text_color(t.dim).child("j k move · Enter edit · Space on/off · r run now · n new · Esc / ← back")));
-  }
-
-  listView(t, cx) {
-    const rows = (this.jobs ?? []).map((j) => {
-      const last = j.last, bad = last && last.code !== 0, on = this.handle.is_focused() && this.sel === j.name;
-      return h_flex().id(`job-${j.name}`).flex_none().px(10).py(8).gap(10).items_center().rounded(7).cursor_pointer().bg(on ? t.selected : t.background).hover((s) => s.bg(on ? t.selected : t.hover)).on_click((_e, cx) => this.openForm(j, cx))
-        .child(v_flex().flex_1().min_w(0).gap(2)
-          .child(h_flex().gap(8).items_center().child(div().w(7).h(7).flex_none().rounded(4).bg(j.enabled ? t.done : t.border)).child(div().truncate().text_color(j.enabled ? t.foreground : t.dim).child(j.name)))
-          .child(div().pl(15).truncate().text_size(11).text_color(t.muted).child(`${human(j.cron)}${j.enabled && j.next?.length ? ` · next ${when(j.next[0])}` : j.enabled ? "" : " · paused"}`))
-          .child(div().pl(15).truncate().text_size(11).text_color(bad ? t.blocked : t.dim).child(last ? `${bad ? "failed" : "ok"} ${ago(last.at)} · ${last.secs}s${j.error ? " · " + j.error : ""}` : j.error ?? "never ran")))
-        .child(div().id(`run-${j.name}`).h(22).px(7).flex().items_center().flex_none().rounded(6).text_size(11).text_color(t.muted).hover((s) => s.bg(t.raised)).on_mouse_down("left", () => {})
-          .on_click((_e, cx) => this.act(["run", j.name], cx, () => { notify({ title: "Schedules", body: `${j.name} started`, level: "info" }); cx.timer.after(8000, (cx) => this.refresh(cx)); })).child("Run"))
-        .child(div().id(`tog-${j.name}`).w(30).h(17).flex_none().rounded(9).border_1().border_color(j.enabled ? t.accent : t.border).on_mouse_down("left", () => {})
-          .on_click((_e, cx) => this.act([j.enabled ? "disable" : "enable", j.name], cx))
-          .child(div().mt(1).ml(j.enabled ? 14 : 1).w(13).h(13).rounded(7).bg(j.enabled ? t.accent : t.dim)));
-    });
-    return v_flex().id("sched-list").flex_1().min_h(0).overflow_y_scrollbar().p(10).gap(2).children(rows)
-      .when(this.error, (el) => el.child(div().p(8).text_size(12).text_color(t.blocked).child(this.error)))
-      .when(!this.error && this.jobs && this.jobs.length === 0, (el) => el.child(div().p(8).text_size(12).text_color(t.dim).child("No schedules yet. Add one with +.")))
-      .when(!this.error && !this.jobs, (el) => el.child(div().p(8).text_size(12).text_color(t.dim).child("Loading…")))
-      .child(div().px(8).pt(10).text_size(11).text_color(t.dim).child("Runs on tm-serve (cron). Times are tm-serve local time."));
+    this.act(args, cx, () => this.close(cx));
   }
 
   formView(t, cx) {
@@ -293,7 +231,7 @@ export default class Sched extends View {
         .child(div().flex_1())
         .when(!f.isNew, (el) => el.child(btn("del", this.confirm ? "Click again to delete" : "Delete", (_e, cx) => {
           if (!this.confirm) { this.confirm = true; cx.notify(); return; }
-          this.act(["rm", f.job.name], cx, () => { this.view = "list"; this.form = null; this.confirm = false; this.refocus(cx); });
+          this.act(["rm", f.job.name], cx, () => { this.confirm = false; this.close(cx); });
         }, false, true))))
       .when(!f.isNew, (el) => el.child(this.historyView(t, f, cx)));
   }

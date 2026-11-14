@@ -73,7 +73,7 @@
     "ctrl-shift-u": "pane-parking.list",
     "ctrl-f2": "pane-parking.name",
     "ctrl-shift-d": "mod.open:file-find",
-    "ctrl-shift-s": "mod.open:devservers",
+    "ctrl-shift-s": "panel-keys.devs",
     "ctrl-/": "mod.open:file-find",
     "ctrl-alt-pageup": "pane-parking.tab-left",
     "ctrl-alt-pagedown": "pane-parking.tab-right",

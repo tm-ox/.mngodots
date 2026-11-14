@@ -284,7 +284,13 @@ export default class WorkspaceStatus extends View {
         if (JSON.stringify(counts) !== JSON.stringify(shared("inbox-counts"))) setShared("inbox-counts", counts); // header chips (tabs-tm)
         const reviews = inbox.review.filter((d) => !d.draft && !d.covered).map((d) => ({ n: d.n, repo: d.repo })), rerev = inbox.waiting.filter((d) => d.flag).length, ready = inbox.mine.filter(readyOf).length;
         if (JSON.stringify(reviews) !== JSON.stringify(this.reviews) || rerev !== this.rerev || ready !== this.ready) { this.reviews = reviews; this.rerev = rerev; this.ready = ready; cx.notify(); }
-      } catch (e) { setShared("inbox-error", String(e).replace(/^Error: /, "")); }
+      } catch (e) {
+        // Any failed refresh while a recent good inbox exists (a cut-short reply, a GitHub HTML error page, a timeout) is a blip:
+        // keep the last list, no red line, try again in ~10 s. Only after 5 minutes without a good refresh does the error show.
+        const last = shared("inbox"), msg = String(e).replace(/^Error: /, "");
+        if (last && Date.now() - last.at < 300000) this.inboxAt = Date.now() - 50000;
+        else setShared("inbox-error", /^\s*</.test(msg) ? "GitHub returned an error page (retrying)" : msg);
+      }
       finished = true; this.inboxBusy = false;
     });
   }

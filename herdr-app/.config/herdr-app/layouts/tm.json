@@ -149,13 +149,6 @@
                           }
                         },
                         {
-                          "id": "sched",
-                          "type": "block",
-                          "content": {
-                            "mod": "sched-tm"
-                          }
-                        },
-                        {
                           "id": "files",
                           "type": "block",
                           "content": {

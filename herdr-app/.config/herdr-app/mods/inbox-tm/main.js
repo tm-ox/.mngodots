@@ -7,31 +7,17 @@
 import { View, div } from "gpui-kit";
 import { v_flex, h_flex, InputState, Input, TextView } from "gpui-base";
 import { run, theme, shared, setShared, nextCommand, exec, hc, home, terminals, notify, focused } from "herdr";
+import { leavePanel, dictate, clean, keyChip, keyHints } from "./lib.js";
+import { SchedView, hcron } from "./sched-form.js";
+import { DevForm, bookmarks, removeBookmark, presetFor } from "./devs-form.js";
+import { MARK, BM_KEY, short, PROBE, parse, tidy, sleep, dage, launch, kill } from "./devs.js";
 
-// Leave a side panel. A panel focused by handle.focus() (keys, toggle) leaves the host's focus context on the terminal pane it
-// came from, so pane.go left would be relative to that pane and do nothing: focus that pane directly. When the host itself
-// moved onto the panel (pane.go), `focused().pane` is null and pane.go works as usual.
-const leavePanel = (direction) => { const f = focused(); if (direction === "left" && f?.pane) run("pane.focus", { pane: f.pane }); else run("pane.go", { direction }); };
 const REV_HOST = "tm-serve";
-// Ctrl+Shift+V (what voice-input.sh sends to herdr-app, which it treats as a terminal): a text box only knows Ctrl+V, so paste the clipboard in here.
-const dictate = (e, cx, box, single = true) => {
-  if (!(e.modifiers?.control && e.modifiers?.shift && String(e.key).toLowerCase() === "v") || !box) return false;
-  exec("wl-paste", ["-n"]).then((r) => { if (r.code === 0 && r.stdout) { box.replace(single ? String(r.stdout).replace(/\r?\n/g, " ") : String(r.stdout)); box.focus(); } });
-  cx.stop_propagation(); return true;
-};
 // Approval detail (shown in place of the list). Everything an agent wrote is data: control and bidi characters are stripped and it is
 // only ever drawn as plain text in an "untrusted" box, never interpreted or put on a command line.
 const ID_RE = /^\d{8}-\d{6}-[0-9a-f]{6}$/, HASH_RE = /^[0-9a-f]{64}$/;
-const clean = (s, max = 6000) => String(s ?? "").replace(/\r/g, "").replace(/\t/g, "  ").replace(/[\u0000-\u0009\u000b-\u001f\u007f-\u009f​-‏‪-‮⁦-⁩﻿]/g, "").slice(0, max);
-const keyChip = (text, t) => div().px(6).h(18).min_w(18).flex().items_center().justify_center().flex_none().rounded(5).border_1().border_color(t.input ?? t.border).bg(t.raised).text_size(11).font_medium().text_color(t.muted).child(text);
 // Same split as the git window: the "## Proposed text" block is what would be posted; everything above it is rev's notes.
 const proposedText = (md) => { const m = /^##\s+Proposed text[^\n]*\n([\s\S]*?)(?=^##\s|$(?![\s\S]))/im.exec(md || ""); return m ? m[1].trim().replace(/(?<!\n)\n(?!\n|\s*[-*] )/g, " ") : ""; };
-const keyHints = (text, t) => h_flex().gap(14).items_center().min_w(0).overflow_hidden().children(text.split(" · ").map((seg) => {
-  const w = seg.split(" "); let n = 1;
-  while (n < w.length && /^[A-Z]$/.test(w[n])) n++;
-  const label = w.slice(n).join(" ");
-  return h_flex().gap(6).items_center().flex_none().child(keyChip(w.slice(0, n).join(" "), t)).when(Boolean(label), (e) => e.child(div().text_size(12).text_color(t.dim).child(label)));
-}));
 const LS = "inbox-folded";
 const loadFolded = () => { try { return new Set(JSON.parse(localStorage.getItem(LS) ?? "[]")); } catch { return new Set(); } };
 const saveFolded = (s) => { try { localStorage.setItem(LS, JSON.stringify([...s])); } catch {} };
@@ -46,49 +32,8 @@ const GROUP = { tasks: "mine", appr: "repo", prs: "repo", wait: "repo" }; // a r
 const PINNED = ["sched", "dev"]; // occasional sections: pinned under a divider at the bottom of the panel
 const WAIT_DAYS = 3; // a waiting item older than this turns the group count amber
 const AUTO_FOLD = ["dev", "sched", "wait"]; // occasional sections: folded on load only; the state is kept after that
-const MARK = "devservers:";
-const BM_KEY = "devservers.bookmarks";
-// Command without the project's own path and node_modules/.bin, so "astro dev" reads as "astro dev".
-const short = (l) => {
-  let c = l.cmd || l.comm || "";
-  for (const d of [l.root, l.cwd]) if (d && d !== "/") c = c.split(d + "/").join("");
-  return c.replace(/^node (\S*\/)?(node_modules\/\.bin\/)?/, "").replace(/node_modules\/\.bin\//g, "").trim();
-};
-// One listener per line: port, pid, comm, address, cwd, git root, seconds up, bookmark id (an ancestor started by
-// Go), full command (last, may contain anything).
-const PROBE = `
-ss -ltnpH 2>/dev/null | while read -r _ _ _ local _ users; do
-  pid=$(printf '%s' "$users" | grep -o 'pid=[0-9]*' | head -1 | cut -d= -f2); [ -n "$pid" ] || continue
-  port=\${local##*:}; addr=\${local%:*}
-  cwd=$(readlink /proc/$pid/cwd 2>/dev/null); cmd=$(tr '\\0' ' ' </proc/$pid/cmdline 2>/dev/null)
-  comm=$(cat /proc/$pid/comm 2>/dev/null); up=$(ps -o etimes= -p $pid 2>/dev/null | tr -d ' ')
-  root=$(git -C "$cwd" rev-parse --show-toplevel 2>/dev/null)
-  bm=""; p=$pid; i=0
-  while [ "$p" -gt 1 ] && [ $i -lt 12 ]; do
-    c=$(tr '\\0' ' ' </proc/$p/cmdline 2>/dev/null)
-    case "$c" in *${MARK}*) bm=$(printf '%s' "$c" | grep -o '${MARK}[a-z0-9]*' | head -1 | cut -d: -f2); break;; esac
-    p=$(ps -o ppid= -p $p 2>/dev/null | tr -d ' '); [ -n "$p" ] || break; i=$((i+1))
-  done
-  printf '%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\t%s\\n' "$port" "$pid" "$comm" "$addr" "$cwd" "$root" "$up" "$bm" "$cmd"
-done
-`;
 
-function parse(out) {
-  const seen = new Set(), list = [];
-  for (const line of out.split("\n")) {
-    const f = line.split("\t");
-    if (f.length < 9) continue;
-    const [port, pid, comm, addr, cwd, root, up, bm] = f, cmd = f.slice(8).join("\t").trim();
-    if (seen.has(port + ":" + pid)) continue;
-    seen.add(port + ":" + pid);
-    list.push({ port: Number(port), pid: Number(pid), comm, addr, cwd, root, up: Number(up) || 0, bm, cmd });
-  }
-  return list.sort((a, b) => a.port - b.port);
-}
 
-const tidy = (l) => short(l).split(/\s+/).map((w) => (w.includes("/") ? w.replace(/\/$/, "").split("/").pop() : w)).filter(Boolean).slice(0, 4).join(" ");
-const sleep = (ms) => exec("sleep", [String(ms / 1000)]);
-const dage = (s) => (s >= 86400 ? `${Math.floor(s / 86400)}d` : s >= 3600 ? `${Math.floor(s / 3600)}h` : s >= 60 ? `${Math.floor(s / 60)}m` : `${s}s`);
 const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 const api = async (req) => { try { const r = await exec(home() + "/workspace/.tools/rcal", ["api", "--json", JSON.stringify(req)]); return JSON.parse(r.stdout); } catch { return { error: "rcal unavailable" }; } };
 const isDone = (i) => i.status === "COMPLETED" || i.status === "CANCELLED";
@@ -130,12 +75,12 @@ export default class InboxPanel extends View {
     this.addState.on("submit", (_e, cx) => this.submitAdd(cx));
     this.addState.on("blur", (_e, cx) => { if (this.adding && !this.addState.value().trim()) { this.adding = false; cx.notify(); } });
     this.tasks = null; this.loadTasks(cx); cx.timer.every(60000, (cx) => this.loadTasks(cx));
-    this.devs = null; this.armed = null; this.scanDevs(cx); cx.timer.every(8000, (cx) => this.scanDevs(cx));
+    this.devs = null; this.devf = null; this.schedv = null; this.armed = null; this.scanDevs(cx); cx.timer.every(8000, (cx) => this.scanDevs(cx));
     this.folded = loadFolded(); AUTO_FOLD.forEach((k) => this.folded.add(k)); this.devOpenAt = 0;
     this.jobs = null; this.loadJobs(cx); cx.timer.every(60000, (cx) => this.loadJobs(cx));
     this.dv = null; this.draftFiles = new Map(); this.det = null; this.marks = new Map(); this.confirm = false; this.running = false; this.results = null; this.pauseUntil = 0;
      /* dev servers start collapsed */ this.sel = null; this.handle = cx.focus_handle();
-    cx.spawn(async (cx) => { for (;;) { const c = await nextCommand(); if (c === "focus") { this.handle.focus(); cx.timer.after(150, (cx) => { this.handle.focus(); cx.notify(); }); /* a panel that was just shown may not be in the focus tree yet: take it again */ if (!this.sel) this.sel = this.items()[0]?.id ?? null; cx.notify(); } } });
+    cx.spawn(async (cx) => { for (;;) { const c = await nextCommand(); if (c === "devs") { this.folded.delete("dev"); saveFolded(this.folded); this.sel = "h:dev"; cx.notify(); this.handle.focus(); cx.timer.after(150, (cx) => { this.handle.focus(); cx.notify(); }); } else if (c === "focus") { this.handle.focus(); cx.timer.after(150, (cx) => { this.handle.focus(); cx.notify(); }); /* a panel that was just shown may not be in the focus tree yet: take it again */ if (!this.sel) this.sel = this.items()[0]?.id ?? null; cx.notify(); } } });
     if (!this.inb || Date.now() - this.inb.at > 45000) setShared("inbox-ask", Date.now());
     // No blur event exists: watch the handle, so the focus border follows the keyboard within 0.25 s.
     this.wasFocused = false;
@@ -247,16 +192,28 @@ export default class InboxPanel extends View {
 
   terminalFor(id) { return terminals().find((t) => (t.state ?? "live") === "live" && (t.labels?.devservers === id || JSON.stringify(t.argv ?? []).includes(MARK + id))); }
 
-  async launch(folder, cmd, name, id) {
-    const args = ["run", "--bg", "--json", "--no-parent", "--name", name, "--cwd", folder];
-    if (id) args.push("--label", "devservers=" + id);
-    args.push("--", "sh", "-c", '"${SHELL:-zsh}" -ic "$1" "$0"; exit $?', MARK + (id ?? "adhoc"), cmd);
-    try { const r = await hc(args); if (r.code !== 0) notify({ title: "Couldn't start " + name, body: (r.stderr || r.stdout).trim().split("\n")[0], level: "error" }); }
-    catch (e) { notify({ title: "Couldn't start " + name, body: String(e.message ?? e), level: "error" }); }
-  }
+  launch(folder, cmd, name, id) { return launch(folder, cmd, name, id); }
 
-  // Only signals the pid while it still runs the command the scan saw (pids get reused).
-  kill(l) { return exec("sh", ["-c", 'c=$(tr "\\0" " " </proc/$1/cmdline 2>/dev/null); [ "${c% }" = "$2" ] && kill "$1"', "sh", String(l.pid), l.cmd]).catch(() => null); }
+  kill(l) { return kill(l); }
+
+  // Schedules: the editor (sched-form.js) replaces the list until Esc; toggle and run-now are keys on the row.
+  openSched(job, cx) { this.folded.delete("sched"); saveFolded(this.folded); this.schedv = new SchedView(this); this.schedv.open(job, cx); }
+  jobAct(args, cx, done) {
+    if (this.jobBusy) return; this.jobBusy = true; cx.notify();
+    cx.spawn(async (cx) => {
+      try { await hcron(args); this.loadJobs(cx); done?.(); } catch (e) { notify({ title: "Schedules", body: String(e.message ?? e), level: "error" }); }
+      this.jobBusy = false; cx.notify();
+    });
+  }
+  toggleJob(j, cx) { this.jobAct([j.enabled ? "disable" : "enable", j.name], cx); }
+  runJob(j, cx) { this.jobAct(["run", j.name], cx, () => { notify({ title: "Schedules", body: j.name + " started", level: "info" }); cx.timer.after(8000, (c) => this.loadJobs(c)); }); }
+
+  // Bookmark form (devs-form.js): an inline box at the top of the Dev servers section. preset: name/cmd/folder; editId: a bookmark to replace.
+  openForm(preset, editId, cx) { this.folded.delete("dev"); saveFolded(this.folded); this.devf = new DevForm(this); this.devf.open(preset, editId, cx); }
+  // Live output of a bookmark's command (its hidden terminal) in a peek.
+  output(b) { const t = b && this.terminalFor(b.id); if (t) run("terminal.peek", { terminal: t.address }); else notify({ title: (b?.name ?? "Server") + " has no output to show", body: "Only servers started with Start from a bookmark have a terminal.", level: "info" }); }
+  // The bookmark behind a Dev servers row: a stopped bookmark row, or a running server that was started from one.
+  bmOf(it) { const id = it?.kind === "bm" ? it.b.id : it?.kind === "dev" ? it.l.bm : null; return id ? bookmarks().find((x) => x.id === id) ?? null : null; }
 
   startBm(b, cx) {
     if (this.terminalFor(b.id)) return;
@@ -331,7 +288,7 @@ export default class InboxPanel extends View {
       const bms = (Array.isArray(shared(BM_KEY)) ? shared(BM_KEY) : []).filter((b) => !this.devs.some((l) => l.bm === b.id));
       const srv = serveRows(bk), up = this.devs.length + srv.filter((x) => x.up).length;
       push("dev", "Dev servers", this.devs.length + bms.length + srv.length, [["running", up], ["stopped", bms.length + srv.filter((x) => !x.up).length]].filter(([, c]) => c),
-        [...bms.map((b) => ({ id: "b:" + b.id, key: "dev", kind: "bm", b })), ...this.devs.map((l) => ({ id: "d:" + l.pid + ":" + l.port, key: "dev", kind: "dev", l })), ...srv.map((x) => ({ id: "v:" + x.type + x.id, key: "dev", kind: "srv", x }))]);
+        [...(this.devf ? [{ id: "f:dev", key: "dev", kind: "devform" }] : []), ...bms.map((b) => ({ id: "b:" + b.id, key: "dev", kind: "bm", b })), ...this.devs.map((l) => ({ id: "d:" + l.pid + ":" + l.port, key: "dev", kind: "dev", l })), ...srv.map((x) => ({ id: "v:" + x.type + x.id, key: "dev", kind: "srv", x }))], Boolean(this.devf));
     }
     // Order: mine (Tasks) first, then repo work (Approvals, Pull requests, Waiting), then the pinned occasional sections. Stable sort keeps row order.
     const rank = { tasks: 0, appr: 1, prs: 2, wait: 3, sched: 4, dev: 5 };
@@ -365,12 +322,14 @@ export default class InboxPanel extends View {
   key(e, cx) {
     const k = e.key, items = this.det ? [] : this.items();
     if (this.dv) return this.dvKey(e, cx);
+    if (this.schedv) return this.schedv.key(e, cx);
+    if (this.devf) return this.devf.key(e, cx);
     if (this.det) return this.detKey(e, cx);
     if (this.adding && dictate(e, cx, this.addState)) return;
     if (this.adding) { if (k === "escape") this.endAdd(cx); else if (k === "tab") this.cycleCal(cx); else return; cx.stop_propagation(); return; }
     if (e.modifiers?.alt && ["h", "j", "k", "l"].includes(k)) { leavePanel({ h: "left", j: "down", k: "up", l: "right" }[k]); cx.timer.after(150, (cx) => cx.notify()); cx.stop_propagation(); return; }
     if (k === "escape") { leavePanel("left"); cx.timer.after(150, (cx) => cx.notify()); cx.stop_propagation(); return; }
-    if (k === "n") { this.startAdd(cx); cx.stop_propagation(); return; }
+    if (k === "n") { const nk = items.find((x) => x.id === this.sel)?.key; if (nk === "dev") this.openForm(null, null, cx); else if (nk === "sched") this.openSched(null, cx); else this.startAdd(cx); cx.stop_propagation(); return; }
     let i = items.findIndex((x) => x.id === this.sel); if (i < 0) i = 0;
     const cur = items[i];
     if (k === "down" || k === "j") this.sel = items[(i + 1) % items.length]?.id ?? null; // wraps: last row -> first
@@ -381,6 +340,8 @@ export default class InboxPanel extends View {
       if (cur.head) { if (!this.folded.has(cur.key)) this.fold(cur.key, cx); }
       else this.sel = "h:" + cur.key; // from a row: up to its header
     } else if ((k === "right" || k === "l") && cur?.head) { if (this.folded.has(cur.key)) this.fold(cur.key, cx); }
+    else if (k === "space" && cur?.kind === "job") { this.toggleJob(cur.j, cx); }
+    else if (k === "r" && cur?.kind === "job") { this.runJob(cur.j, cx); }
     else if ((k === "enter" || k === "space") && cur) { if (cur.head) this.fold(cur.key, cx); else this.activate(cur); }
     else if (k === "d" && cur?.kind === "task") { this.remove(cur.k, cx); return cx.stop_propagation(); }
     else if (k === "x" && cur?.kind === "task") { this.complete(cur.k, cx); return cx.stop_propagation(); }
@@ -388,7 +349,10 @@ export default class InboxPanel extends View {
     else if ((k === "s" || k === "r") && cur?.kind === "dev") { this.act(cur.l, k === "s" ? "stop" : "restart", cx); }
     else if (k === "s" && cur?.kind === "srv") { this.stopServe(cur.x, cx); }
     else if (k === "t" && cur?.kind === "srv") { this.tunnel(cur.x); }
-    else if (k === "e" && cur?.key === "dev") { run("mod.open", { name: "devservers" }); }
+    else if (k === "e" && this.bmOf(cur)) { const b = this.bmOf(cur); this.openForm(b, b.id, cx); }
+    else if (k === "b" && cur?.kind === "dev" && !cur.l.bm) { this.openForm(presetFor(cur.l), null, cx); }
+    else if (k === "d" && cur?.kind === "bm") { removeBookmark(cur.b); this.sel = "h:dev"; this.scanDevs(cx); }
+    else if (k === "o" && this.bmOf(cur)) { this.output(this.bmOf(cur)); }
     else if (k === "a") this.foldAll(cx);
     else if (k === "r") { setShared("inbox-ask", Date.now()); setShared("broker-ask", Date.now()); }
     else if (k === "o") { setShared("git-tab", "inbox"); run("mod.open", { name: "changes-float" }); }
@@ -587,9 +551,28 @@ export default class InboxPanel extends View {
     else if (it.kind === "health") setShared("broker-ask", Date.now());
     else if (it.kind === "srv") this.tunnel(it.x);
     else if (it.kind === "dev") exec("xdg-open", [`http://localhost:${it.l.port}`]).catch(() => {});
-    else if (it.kind === "job") { run("layout.select", { stack: "panel-body", child: "sched" }); this.after150("sched-tm.focus"); }
+    else if (it.kind === "job") this.openSched(it.j, this.cxRef);
     else if (it.kind === "bm") this.startBm(it.b, this.cxRef);
     else { if (it.k) setShared("memo-open", it.k.id); run("mod.open", { name: "memo-tm" }); }
+  }
+
+  // Footer: only the keys that work on the selected row (plus Esc), so the line stays short as sections grow.
+  hintsFor(it) {
+    const esc = " · Esc leave";
+    if (!it) return "j/k move" + esc;
+    if (it.head) return "Enter fold · a fold all · j/k move" + esc;
+    switch (it.kind) {
+      case "pr": return "Enter open · o git · r refresh" + esc;
+      case "appr": return "Enter details · b gb-ok" + esc;
+      case "health": return "Enter refresh" + esc;
+      case "task": return "Enter open · x done · d delete · n new" + esc;
+      case "more": return "Enter open Memo" + esc;
+      case "bm": return "Enter start · e edit · d remove · n new" + esc;
+      case "dev": return "Enter open · r restart · s stop · " + (it.l.bm ? "e edit · o output" : "b bookmark") + " · n new" + esc;
+      case "srv": return "Enter tunnel · s stop" + esc;
+      case "job": return "Enter edit · Space on/off · r run · n new" + esc;
+      default: return "j/k move" + esc;
+    }
   }
 
   // Opens gb-ok on tm-serve in a new tab of tm's own terminal: the tty there is the approval boundary, so the mod never approves.
@@ -607,6 +590,7 @@ export default class InboxPanel extends View {
   render(cx) {
     const t = theme(), inb = this.inb, s = inb ? sections(inb) : null, focused = this.handle.is_focused();
     if (this.dv) return this.renderDv(t, focused);
+    if (this.schedv) return this.schedv.render(t, focused, cx);
     if (this.det) return this.renderDet(t, focused);
     const hideQ = this.queuedPrs(), vis = (l) => l.filter((d) => !hideQ.has(this.prKey(d.repo, d.n)));
     const total = s ? vis(s.fix).length + vis(s.toReview).length + vis(s.rerev).length + vis(s.talk).length + vis(s.ready).length : 0;
@@ -679,10 +663,13 @@ export default class InboxPanel extends View {
       const j = it.j, on = focused && this.sel === it.id, nx = j.enabled && j.next?.[0], bad = j.last && j.last.code !== 0;
       return h_flex().id(it.id).flex_none().px(10).py(4).gap(7).items_center().rounded(7).cursor_pointer().bg(on ? t.selected : t.background).hover((x) => x.bg(on ? t.selected : t.hover))
         .on_click(() => this.activate(it))
-        .child(div().w(7).h(7).flex_none().rounded(4).bg(j.enabled ? t.done : t.border))
+        .child(div().id("jt" + it.id).w(15).h(20).flex().items_center().justify_center().flex_none().rounded(5).cursor_pointer().hover((x) => x.bg(t.hover)).on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+          .on_click((_e, cx) => { cx.stop_propagation(); this.toggleJob(j, cx); }).child(div().w(7).h(7).rounded(4).bg(j.enabled ? t.done : t.border)))
         .child(div().flex_1().min_w(0).truncate().text_color(on ? t.foreground : j.enabled ? t.muted : t.dim).child(j.name))
         .when(bad, (el) => el.child(div().flex_none().text_size(11).text_color(t.blocked).child("failed")))
-        .child(div().flex_none().text_size(11).text_color(t.dim).child(nx ? nextWhen(nx) : "off"));
+        .child(div().flex_none().text_size(11).text_color(t.dim).child(nx ? nextWhen(nx) : "off"))
+        .child(div().id("jr" + it.id).flex_none().w(20).h(20).flex().items_center().justify_center().rounded(5).cursor_pointer().text_size(11).text_color(t.dim).hover((x) => x.bg(t.hover).text_color(t.foreground)).on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+          .on_click((_e, cx) => { cx.stop_propagation(); this.runJob(j, cx); }).child("▶"));
     };
     const brow = (it) => {
       const b = it.b, on = focused && this.sel === it.id, starting = Boolean(this.terminalFor(b.id));
@@ -720,16 +707,18 @@ export default class InboxPanel extends View {
         .child(div().w(10).flex_none().text_size(10).text_color(t.dim).child(open ? "▾" : "▸"))
         .child(div().flex_none().text_size(12).font_semibold().text_color(t.muted).child(it.name.toUpperCase()))
         .child(div().flex_none().text_size(12).font_semibold().text_color(t.foreground).child(String(it.n)))
-        .child(h_flex().pl(6).gap(8).items_center().min_w(0).overflow_hidden().children(it.counts.map(([k, n]) => h_flex().gap(3).items_center().flex_none().child(div().text_size(11).font_semibold().text_color(colorOf[k]).child(String(n))).child(div().text_size(11).text_color(t.dim).child(LABEL[k])))));
+        .child(h_flex().pl(6).gap(8).items_center().min_w(0).overflow_hidden().children(it.counts.map(([k, n]) => h_flex().gap(3).items_center().flex_none().child(div().text_size(11).font_semibold().text_color(colorOf[k]).child(String(n))).child(div().text_size(11).text_color(t.dim).child(LABEL[k])))))
+        .when(it.key === "dev" || it.key === "sched", (e) => e.child(div().flex_1().min_w(0)).child(div().id("add-" + it.key).flex_none().h(18).px(6).flex().items_center().rounded(5).border_1().border_color(t.border).cursor_pointer().text_size(11).text_color(t.muted).hover((x) => x.bg(t.hover))
+          .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click((_e, cx) => { if (it.key === "dev") this.openForm(null, null, cx); else this.openSched(null, cx); cx.stop_propagation(); }).child(it.key === "dev" ? "+ bookmark" : "+ schedule")));
     };
     const items = this.items();
     // Explicit height (a scroll container will not shrink to its content): headers 31px, schedule rows 29px, server rows 47px, capped.
-    const bkNow = shared("broker"), pinWant = (bkNow ? 34 : 14) + items.filter((it) => PINNED.includes(it.key)).reduce((a, it) => a + (it.head ? 33 : it.kind === "dev" || it.kind === "bm" || it.kind === "srv" ? 50 : 31), 0), pinH = Math.min(520, pinWant), pinCapped = pinWant > 520;
+    const bkNow = shared("broker"), pinWant = (bkNow ? 34 : 14) + items.filter((it) => PINNED.includes(it.key)).reduce((a, it) => a + (it.head ? 33 : it.kind === "devform" ? 175 : it.kind === "dev" || it.kind === "bm" || it.kind === "srv" ? 50 : 31), 0), pinH = Math.min(520, pinWant), pinCapped = pinWant > 520;
     const addRow = h_flex().id("inbox-add-row").flex_none().px(6).py(4).gap(6).items_center().rounded(7).border_1().border_color(t.accent).bg(t.raised)
       .child(div().id("inbox-add-cal").flex_none().h(18).px(6).flex().items_center().rounded(5).border_1().border_color(t.border).cursor_pointer().text_size(11).text_color(t.accent)
         .on_mouse_down("left", (_e, cx) => cx.stop_propagation()).on_click((_e, cx) => this.cycleCal(cx)).child(this.cal.toUpperCase()))
       .child(Input.new(this.addState).flex_1().min_w(0).h(24).text_size(12.8).text_color(t.foreground));
-    const draw = (it) => (it.head ? head(it) : it.kind === "add" ? addRow : it.kind === "appr" ? arow(it) : it.kind === "health" ? hrow(it) : it.kind === "task" ? trow(it) : it.kind === "dev" ? drow(it) : it.kind === "srv" ? vrow(it) : it.kind === "bm" ? brow(it) : it.kind === "job" ? jrow(it) : it.kind === "more" ? more(it) : row(it));
+    const draw = (it) => (it.head ? head(it) : it.kind === "devform" ? this.devf.render(t) : it.kind === "add" ? addRow : it.kind === "appr" ? arow(it) : it.kind === "health" ? hrow(it) : it.kind === "task" ? trow(it) : it.kind === "dev" ? drow(it) : it.kind === "srv" ? vrow(it) : it.kind === "bm" ? brow(it) : it.kind === "job" ? jrow(it) : it.kind === "more" ? more(it) : row(it));
     return v_flex().id("inbox-panel").track_focus(this.handle).on_key_down((e, cx) => this.key(e, cx)).size_full().min_h(0).rounded(10).overflow_hidden().bg(t.background).border_1().border_color(focused ? t.accent : t.border).text_color(t.foreground).text_size(13)
       .child(h_flex().h(30).flex_none().px(14).gap(8).items_center().border_b(1).border_color(t.border)
         .child(div().id("inbox-title").font_semibold().cursor_pointer().on_click(() => { setShared("git-tab", "inbox"); run("mod.open", { name: "changes-float" }); }).child("Inbox"))
@@ -743,6 +732,6 @@ export default class InboxPanel extends View {
         .when(Boolean(s) && s.covered > 0, (el) => el.child(div().px(10).pt(10).text_size(11).text_color(t.dim).child(`${s.covered} more already approved by others`)))
         .when(Boolean(this.err && s), (el) => el.child(div().px(10).pt(8).text_size(11).text_color(t.blocked).child(this.err))))
       .when(items.some((it) => PINNED.includes(it.key)) || Boolean(bkNow), (el) => el.child(v_flex().id("inbox-pinned").flex_none().h(pinH).when(pinCapped, (e) => e.overflow_y_scrollbar()).when(!pinCapped, (e) => e.overflow_hidden()).px(8).pb(6).pt(2).gap(1).border_t(1).border_color(t.border).children([...items.filter((it) => PINNED.includes(it.key)).map(draw), ...(bkNow ? [hrow({ id: "k:health", bk: bkNow })] : [])])))
-      .child(div().flex_none().h(26).px(14).flex().items_center().border_t(1).border_color(focused ? t.border : t.background).truncate().text_size(11).text_color(t.dim).child(focused ? "Alt+L Files · Alt+H leave · j k move · ← → fold · a fold all · g G ends · Enter open (approval: detail · schedule: manage) · n new task · x tick · d delete task · s stop · t tunnel (tm-serve) · e servers · r restart / start (server) or refresh · Esc leave" : ""));
+      .child(div().flex_none().h(26).px(14).flex().items_center().border_t(1).border_color(focused ? t.border : t.background).truncate().text_size(11).text_color(t.dim).child(focused ? keyHints(this.hintsFor(items.find((x) => x.id === this.sel)), t) : ""));
   }
 }
